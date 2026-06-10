@@ -1,6 +1,7 @@
 import { isLocalTranslationEnabled, preloadLocalTranslation, runLocalTranslationPrompt } from "./local-translation.js";
 
 const DEFAULT_TRANSLATION_OUTPUT = "Your translated text will appear here.";
+const APP_BASE_PATH = window.__APP_BASE_PATH__ || "/";
 
 const logEl = document.getElementById("log");
 const translationOutputEl = document.getElementById("translationOutput");
@@ -551,7 +552,7 @@ removeSelectedModelBtn?.addEventListener("click", async () => {
   log("removed selected model from offline list:", modelName);
 
   if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: "REMOVE_MODEL_CACHE", modelName });
+    navigator.serviceWorker.controller.postMessage({ type: "REMOVE_MODEL_CACHE", modelName, basePath: APP_BASE_PATH });
   }
 });
 

@@ -1,16 +1,29 @@
-const STATIC_CACHE = "offline-phone-translator-static-v1";
-const APP_ASSETS = [
-  "/",
-  "/index.html",
-  "/app.js",
-  "/config.js",
-  "/local-translation.js",
-  "/manifest.webmanifest",
-];
+const STATIC_CACHE = "offline-phone-translator-static-v2";
+
+function getBasePath() {
+  const url = new URL(self.location.href);
+  return url.pathname.replace(/[^/]+$/, "");
+}
+
+function toAppUrl(path) {
+  return new URL(path, self.location.href).toString();
+}
+
+function getAppAssets() {
+  const basePath = getBasePath();
+  return [
+    toAppUrl(basePath),
+    toAppUrl(`${basePath}index.html`),
+    toAppUrl(`${basePath}app.js`),
+    toAppUrl(`${basePath}config.js`),
+    toAppUrl(`${basePath}local-translation.js`),
+    toAppUrl(`${basePath}manifest.webmanifest`),
+  ];
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_ASSETS))
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(getAppAssets()))
   );
   self.skipWaiting();
 });
@@ -48,7 +61,7 @@ self.addEventListener("fetch", (event) => {
           });
           return response;
         })
-        .catch(() => caches.match("/index.html"));
+        .catch(() => caches.match(toAppUrl(`${getBasePath()}index.html`)));
     })
   );
 });
@@ -58,7 +71,7 @@ self.addEventListener("message", (event) => {
     return;
   }
 
-  const { modelName } = event.data;
+  const { modelName, basePath } = event.data;
   event.waitUntil(
     caches.keys().then(async (keys) => {
       for (const key of keys) {
@@ -66,7 +79,7 @@ self.addEventListener("message", (event) => {
         const requests = await cache.keys();
         await Promise.all(
           requests
-            .filter((request) => request.url.includes(modelName))
+            .filter((request) => request.url.includes(modelName) && (!basePath || request.url.includes(basePath)))
             .map((request) => cache.delete(request))
         );
       }

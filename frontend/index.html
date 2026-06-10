@@ -292,9 +292,13 @@
         <div id="log"></div>
       </div>
     <script>
+      window.__APP_BASE_PATH__ = new URL("./", window.location.href).pathname;
+
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js").catch((error) => {
+          navigator.serviceWorker.register("./sw.js", {
+            scope: window.__APP_BASE_PATH__,
+          }).catch((error) => {
             console.error("service worker registration failed", error);
           });
         });
