@@ -1,11 +1,12 @@
 import { isLocalTranslationEnabled, preloadLocalTranslation, runLocalTranslationPrompt } from "./local-translation.js";
 
+const DEFAULT_TRANSLATION_OUTPUT = "Your translated text will appear here.";
+
 const logEl = document.getElementById("log");
 const translationOutputEl = document.getElementById("translationOutput");
 const offlineReadyBadgeEl = document.getElementById("offlineReadyBadge");
 const toggleLogBtn = document.getElementById("toggleLog");
 const runLocalBtn = document.getElementById("runLocal");
-const loadLocalModelBtn = document.getElementById("loadLocalModel");
 const downloadOfflineModelsBtn = document.getElementById("downloadOfflineModels");
 const speakResponsesEl = document.getElementById("speakResponses");
 const localModelStatusEl = document.getElementById("translationModelStatus");
@@ -54,7 +55,7 @@ function log(...parts) {
 
 function setTranslationOutput(text) {
   if (translationOutputEl) {
-    translationOutputEl.textContent = text || "Your translated text will appear here.";
+    translationOutputEl.textContent = text || DEFAULT_TRANSLATION_OUTPUT;
   }
 }
 
@@ -329,6 +330,7 @@ async function loadLocalModel() {
     await preloadLocalTranslation(modelName);
     setLocalConversationState("ok", "ready");
     setLocalModelStatus("Local model loaded");
+    updateOfflinePairStatus();
     log("local translation model loaded");
   } catch (error) {
     setLocalConversationState("err", "load failed");
@@ -449,7 +451,7 @@ clearTextBtn?.addEventListener("click", () => {
 
 copyTranslationBtn?.addEventListener("click", async () => {
   const text = translationOutputEl?.textContent?.trim();
-  if (!text || text === "Your translated text will appear here.") {
+  if (!text || text === DEFAULT_TRANSLATION_OUTPUT) {
     return;
   }
   try {
@@ -532,10 +534,6 @@ toggleLogBtn?.addEventListener("click", () => {
   }
 });
 
-loadLocalModelBtn?.addEventListener("click", () => {
-  void loadLocalModel();
-});
-
 downloadOfflineModelsBtn?.addEventListener("click", () => {
   void downloadOfflineModels();
 });
@@ -561,6 +559,6 @@ syncInput();
 syncSpeakResponsesInput();
 updateDownloadedPairsList();
 setTranslationOutput("");
-setLocalModelStatus(isLocalTranslationEnabled() ? "Local model ready (not yet loaded)" : "Local model disabled in config");
+setLocalModelStatus(isLocalTranslationEnabled() ? "Local translation available" : "Local translation disabled in config");
 setLocalConversationState(isLocalTranslationEnabled() ? "warn" : "err", isLocalTranslationEnabled() ? "idle" : "disabled");
 setLocalRecordingStatus("Text translation mode");

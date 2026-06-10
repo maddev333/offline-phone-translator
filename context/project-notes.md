@@ -1,13 +1,22 @@
 # Project Notes
+
 My name is Nick.
 
-This voice agent supports Microsoft Entra ID authentication, Azure OpenAI realtime sessions, and Microsoft Learn MCP integration.
+This repository is a browser-based offline translation prototype with:
+- a minimal Express server for local hosting
+- a static frontend in `frontend/`
+- local translation via Transformers.js in the browser
+- service-worker caching for offline app-shell support
 
-Use `local_context_search` for repository-specific notes and internal context.
-Use Microsoft Learn MCP tools for public Microsoft documentation.
+Current supported language directions:
+- English → Spanish
+- Spanish → English
+- English → German
+- German → English
 
-Current backend features:
-- realtime connect route at `/api/realtime/connect`
-- Entra bearer token validation
-- local tool event streaming to the frontend UI
-- MCP tool orchestration for Microsoft Learn docs
+Current scope:
+- text translation only
+- optional speech synthesis for translated output
+- no authentication
+- no realtime voice features
+- no MCP integration

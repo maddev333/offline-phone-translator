@@ -9,7 +9,7 @@ env.useBrowserCache = true;
 env.backends.onnx.wasm.proxy = false;
 env.backends.onnx.wasm.numThreads = 1;
 
-const DEFAULT_MODEL = "Xenova/t5-small";
+const DEFAULT_MODEL = "Xenova/opus-mt-en-es";
 const DEFAULT_MAX_NEW_TOKENS = 96;
 
 const runtimePromises = new Map();
@@ -74,8 +74,6 @@ export async function runLocalTranslationPrompt({ prompt, model, onToken }) {
   const result = await translator(sourceText, {
     max_new_tokens: getLocalConfig().maxNewTokens,
   });
-
-  console.log("translation raw result", result);
 
   const first = Array.isArray(result) ? result[0] : result;
   const text = first?.translation_text

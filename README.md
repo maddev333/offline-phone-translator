@@ -1,29 +1,23 @@
 # Offline Phone Translator
 
-A standalone browser-based offline translation prototype built with TypeScript and Transformers.js.
+A small browser-based offline translation prototype served by a minimal TypeScript/Express app.
 
-## What it does
-- loads browser-compatible translation models like `Xenova/opus-mt-en-es`
-- runs text translation locally using Transformers.js
-- optionally speaks translated text with browser speech synthesis
-- can be served as a tiny local web app
-
-## Current scope
-This project is currently a **text-only offline translation prototype**.
-
-Input format:
-- `translate English to Spanish: Hello, how are you?`
-- `translate English to German: Where is the station?`
-
-## Why this project exists
-This repo was split away from a larger realtime voice/MCP app to focus on a simpler mobile-friendly offline translation direction.
+## Features
+- local, in-browser translation with Transformers.js
+- downloadable language-pair models for offline use
+- English ↔ Spanish support
+- English ↔ German support
+- optional speech synthesis for translated text
+- service worker for offline app-shell caching
 
 ## Project layout
 - `frontend/` — static browser app
-- `src/` — minimal Express server for local/static hosting
+- `src/` — local Express server
+- `dist/` — compiled server output
+- `context/` — local project notes
 
 ## Configuration
-Edit `frontend/config.js` if needed:
+Copy `frontend/config.example.js` to `frontend/config.js` if needed and adjust values:
 
 ```js
 window.__APP_CONFIG__ = {
@@ -38,38 +32,37 @@ window.__APP_CONFIG__ = {
 ```
 
 ## Run locally
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Start the app:
-   ```bash
-   npm run dev
-   ```
-3. Open:
-   ```
-   http://localhost:3000
-   ```
-4. Click **Download offline models** once while online to preload supported translation models
-5. Click **Load local model** for the currently selected language pair
-6. Enter text to translate
-7. Click **Run local translation**
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
 
 ## Scripts
-- `npm run dev` — run local server
-- `npm run build` — build TypeScript server
-- `npm start` — run built server
+- `npm run dev` — run the local server
+- `npm run build` — compile the TypeScript server
+- `npm start` — run the compiled server
 
 ## Notes
-- The app now prefers translation-specific models for better language control.
-- Current built-in language pairs are English↔Spanish and English↔German.
-- Browser cache is enabled so downloaded model assets can be reused offline.
-- A service worker caches the app shell for offline use after first load.
-- Speech output currently uses browser/system voices.
-- This is the first step toward offline phone translation, not the finished mobile UX.
+- Translation runs in the browser, not on the server.
+- The server only serves static files and a health endpoint.
+- Downloaded model tracking is stored in browser local storage.
+- The service worker caches app assets for repeat/offline use.
 
-## Likely next steps
-- switch to a better translation-specific local model
-- add mobile-first UI
-- add offline/PWA caching
-- add speech input pipeline for offline phone translation
+## Current scope
+This repo is intentionally focused on text translation only.
+
+It does not include:
+- authentication in the active frontend flow
+- realtime voice translation in the active app
+- MCP integrations in the active app
+- cloud inference for translation
+
+## Repository note
+An older experimental realtime/MCP backend has been moved to `archive/legacy-realtime-app/` for reference.
+
+The active translator server is currently defined by:
+- `src/app.ts`
+- `src/index.ts`
+- `frontend/`

@@ -1,13 +1,10 @@
 # Local Context
 
-Put text or markdown files in this `context/` directory to make them searchable by the `local_context_search` tool.
+Files in this `context/` directory are for repository-specific notes and searchable local reference material.
 
-Example uses:
-- private project notes
-- deployment runbooks
+Good uses:
+- product notes
+- project scope and constraints
+- deployment or setup reminders
 - team conventions
-- product background
-- customer-specific reference material
-
-Query example:
-- "search local context for deployment steps"
+- private implementation notes
