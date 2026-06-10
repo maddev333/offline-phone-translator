@@ -1,0 +1,10 @@
+{
+  "name": "Offline Phone Translator",
+  "short_name": "Translator",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "description": "Browser-based offline translation prototype.",
+  "icons": []
+}

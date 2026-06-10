@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Offline Phone Translator</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --border: #e2e6ef;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --success: #146c2e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: Inter, Arial, sans-serif;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .app {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+      }
+      .row { margin-bottom: 12px; }
+      .toolbar, .language-row, .status-grid, .actions-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .toolbar button,
+      .actions-row button,
+      .language-row button,
+      .field,
+      .field select {
+        max-width: 100%;
+      }
+      .status-grid {
+        align-items: flex-start;
+      }
+      .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+      }
+      .status-block {
+        min-width: 220px;
+        flex: 1;
+      }
+      .field {
+        flex: 1;
+        min-width: 160px;
+      }
+      .field label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      #translationOutput {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        min-height: 120px;
+        padding: 14px;
+        background: #f8fafc;
+        font-size: 18px;
+        line-height: 1.5;
+      }
+      #log {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        min-height: 220px;
+        padding: 12px;
+        white-space: pre-wrap;
+        background: #0f172a;
+        color: #e5e7eb;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
+      button, input, textarea, select {
+        font: inherit;
+      }
+      button, select {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        background: white;
+      }
+      button.primary {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+      }
+      button.ghost {
+        background: #f8fafc;
+      }
+      button.primary:hover {
+        background: var(--primary-hover);
+      }
+      button:disabled {
+        opacity: 0.55;
+      }
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        margin-top: 8px;
+        resize: vertical;
+      }
+      .hint { color: var(--muted); font-size: 14px; }
+      .status { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 13px; }
+      .status.ok { background: #e7f6ea; color: #146c2e; }
+      .status.warn { background: #fff4d6; color: #8a5a00; }
+      .status.err { background: #fde7e9; color: #a12622; }
+      .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .title-row h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      .section-title {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      .hero-subtitle {
+        margin-top: 6px;
+      }
+      .helper-text {
+        margin: 10px 0 0;
+      }
+      .offline-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef6ff;
+        color: var(--primary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .toggle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      @media (max-width: 640px) {
+        .app {
+          padding: 16px 12px 32px;
+        }
+        .panel {
+          padding: 14px;
+          border-radius: 14px;
+        }
+        .title-row,
+        .toolbar,
+        .language-row,
+        .status-grid,
+        .actions-row,
+        .toggle-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .title-row h1 {
+          font-size: 24px;
+        }
+        button, select {
+          width: 100%;
+        }
+      }
+    </style>
+    <script src="./config.js"></script>
+    <script>
+      window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <div class="panel">
+        <div class="title-row">
+          <div>
+            <h1>Offline Phone Translator</h1>
+            <p class="hint hero-subtitle">Choose a language pair, type your message, and translate it on your device.</p>
+          </div>
+          <label class="hint">
+            <input id="speakResponses" type="checkbox" />
+            Speak translated text
+          </label>
+        </div>
+        <p class="hint helper-text">Tip: download the selected language pair before you go offline.</p>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <span id="translationState" class="status warn">idle</span>
+        </div>
+        <div class="row hint" id="translationModelStatus">Local model idle</div>
+        <div class="row hint" id="translationStatus">Text translation mode</div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Languages</h2>
+        <div class="language-row">
+          <div class="field">
+            <label for="sourceLanguage">From</label>
+            <select id="sourceLanguage"></select>
+          </div>
+          <button id="swapLanguages" type="button">Swap</button>
+          <div class="field">
+            <label for="targetLanguage">To</label>
+            <select id="targetLanguage"></select>
+          </div>
+          <button id="downloadOfflineModels" class="ghost">Download for offline use</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="status-grid">
+          <div class="status-block hint">
+            <strong>Offline status</strong><br />
+            <span id="offlinePairStatus">No language pair selected yet.</span>
+          </div>
+          <div class="status-block hint">
+            <strong>Downloaded pairs</strong><br />
+            <span id="downloadedPairsList">None yet.</span>
+          </div>
+          <div class="status-block actions-row">
+            <button id="removeSelectedModel" type="button" class="ghost">Remove selected model</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="field">
+          <label for="translationInput">What do you want to say?</label>
+          <textarea id="translationInput" placeholder="Type something like: Where is the station?"></textarea>
+        </div>
+        <div class="quick-actions">
+          <button type="button" class="ghost" data-phrase="Hello">Hello</button>
+          <button type="button" class="ghost" data-phrase="Where is the station?">Where is the station?</button>
+          <button type="button" class="ghost" data-phrase="I need help">I need help</button>
+          <button type="button" class="ghost" data-phrase="How much does this cost?">How much does this cost?</button>
+        </div>
+        <div class="actions-row">
+          <button id="runLocal" class="primary">Translate</button>
+          <button id="saveContext" class="ghost">Save text</button>
+          <button id="clearText" type="button" class="ghost">Clear</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="title-row">
+          <h2 class="section-title">Translation</h2>
+          <span id="offlineReadyBadge" class="offline-badge">Offline status unknown</span>
+        </div>
+        <div id="translationOutput" class="hint">Your translated text will appear here.</div>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="copyTranslation" type="button" class="ghost">Copy translation</button>
+          <button id="clearOutput" type="button" class="ghost">Clear output</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toggle-row">
+          <h2 class="section-title">Activity</h2>
+          <button id="toggleLog" type="button">Hide activity</button>
+        </div>
+        <div id="log"></div>
+      </div>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch((error) => {
+            console.error("service worker registration failed", error);
+          });
+        });
+      }
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
