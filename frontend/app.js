@@ -5,6 +5,11 @@ import {
   releaseLocalTranslation,
   runLocalTranslationPrompt,
 } from "./local-translation.js";
+import {
+  LANGUAGE_MODEL_MAP,
+  SUPPORTED_LANGUAGE_PAIRS,
+  findLanguageByLocale,
+} from "./languages.js";
 
 const DEFAULT_TRANSLATION_OUTPUT = "Your translated text will appear here.";
 const APP_BASE_PATH = window.__APP_BASE_PATH__ || "/";
@@ -38,21 +43,10 @@ const TARGET_LANGUAGE_STORAGE_KEY = "offline-translator-target-language";
 const SPEAK_RESPONSES_STORAGE_KEY = "offline-translator-speak-responses";
 const DOWNLOADED_MODELS_STORAGE_KEY = "offline-translator-downloaded-models";
 
-const LANGUAGE_MODEL_MAP = {
-  "English:Spanish": "Xenova/opus-mt-en-es",
-  "Spanish:English": "Xenova/opus-mt-es-en",
-  "English:German": "Xenova/opus-mt-en-de",
-  "German:English": "Xenova/opus-mt-de-en",
-};
-
-const SUPPORTED_LANGUAGE_PAIRS = {
-  English: ["Spanish", "German"],
-  Spanish: ["English"],
-  German: ["English"],
-};
-
 let runningLocalInference = false;
 let isSpeakingResponse = false;
+// Auto-switching overwrites the stored target, so keep the user's own English-source choice separately.
+let preferredEnglishTarget = null;
 
 function log(...parts) {
   const line = parts.join(" ");
@@ -108,6 +102,22 @@ function syncLanguageSelectors(preferredSource, preferredTarget) {
   updateOfflinePairStatus();
 }
 function syncInput() { if (translationInputEl) translationInputEl.value = getSavedInput(); syncLanguageSelectors(); }
+function getPreferredEnglishTarget() {
+  const targets = SUPPORTED_LANGUAGE_PAIRS.English || [];
+  if (targets.includes(preferredEnglishTarget)) return preferredEnglishTarget;
+  const saved = getSavedTargetLanguage();
+  if (targets.includes(saved)) return saved;
+  return targets.includes("Spanish") ? "Spanish" : targets[0];
+}
+function applyDetectedSourceLanguage(locale) {
+  const detected = findLanguageByLocale(locale);
+  if (!detected || sourceLanguageEl?.value === detected) return;
+  const targets = SUPPORTED_LANGUAGE_PAIRS[detected];
+  if (!targets?.length) { log(`no translation model available for detected language: ${detected}`); return; }
+  const nextTarget = detected === "English" ? getPreferredEnglishTarget() : "English";
+  syncLanguageSelectors(detected, nextTarget);
+  log(`detected speech language: ${detected} → ${targetLanguageEl?.value || nextTarget}`);
+}
 function syncSpeakResponsesInput() { if (speakResponsesEl) speakResponsesEl.checked = getSavedSpeakResponses(); }
 function stopSpeaking() { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); isSpeakingResponse = false; setLocalConversationState("ok", "ready"); }
 function speakText(text) {
@@ -156,12 +166,12 @@ copyTranslationBtn?.addEventListener("click", async () => { const text = transla
 clearOutputBtn?.addEventListener("click", () => setTranslationOutput(""));
 quickPhraseButtons.forEach((button) => button.addEventListener("click", () => { const phrase = button.getAttribute("data-phrase") || ""; if (translationInputEl) translationInputEl.value = phrase; saveInput(phrase); }));
 sourceLanguageEl?.addEventListener("change", () => { saveSourceLanguage(sourceLanguageEl.value); syncLanguageSelectors(); });
-targetLanguageEl?.addEventListener("change", () => { saveTargetLanguage(targetLanguageEl.value); syncLanguageSelectors(sourceLanguageEl?.value, targetLanguageEl.value); });
+targetLanguageEl?.addEventListener("change", () => { saveTargetLanguage(targetLanguageEl.value); if (sourceLanguageEl?.value === "English") preferredEnglishTarget = targetLanguageEl.value; syncLanguageSelectors(sourceLanguageEl?.value, targetLanguageEl.value); });
 swapLanguagesBtn?.addEventListener("click", () => { const currentSource = sourceLanguageEl?.value; const currentTarget = targetLanguageEl?.value; if (!currentSource || !currentTarget) return; if (!(SUPPORTED_LANGUAGE_PAIRS[currentTarget] || []).includes(currentSource)) { log(`swap not supported for: ${currentSource} → ${currentTarget}`); return; } syncLanguageSelectors(currentTarget, currentSource); log(`swapped languages: ${currentTarget} → ${currentSource}`); });
 speakResponsesEl?.addEventListener("change", () => { saveSpeakResponses(Boolean(speakResponsesEl.checked)); log("speak responses:", speakResponsesEl.checked ? "enabled" : "disabled"); if (!speakResponsesEl.checked) stopSpeaking(); });
 window.addEventListener("local-translation-progress", (event) => { const detail = event.detail || {}; const file = detail.file || detail.name || detail.status || "model"; const progress = typeof detail.progress === "number" ? ` ${Math.round(detail.progress * 100)}%` : ""; setLocalModelStatus(`Loading ${file}${progress}`); });
 runLocalBtn?.addEventListener("click", () => void runLocalTranslation());
-window.addEventListener("offline-translator:asr-transcript", (event) => { const detail = event.detail || {}; const text = String(detail.text || "").trim(); if (!text || !translationInputEl) return; translationInputEl.value = text; saveInput(text); setLocalRecordingStatus(detail.final ? "Final transcript ready" : "Listening…"); if (detail.final) { log(`live transcript${detail.lang ? ` (${detail.lang})` : ""}:`, text); if (detail.autoTranslate) void runLocalTranslation(); } });
+window.addEventListener("offline-translator:asr-transcript", (event) => { const detail = event.detail || {}; const text = String(detail.text || "").trim(); if (!text || !translationInputEl) return; translationInputEl.value = text; saveInput(text); setLocalRecordingStatus(detail.final ? "Final transcript ready" : "Listening…"); if (detail.final) { log(`live transcript${detail.lang ? ` (${detail.lang})` : ""}:`, text); applyDetectedSourceLanguage(detail.lang); if (detail.autoTranslate) void runLocalTranslation(); } });
 toggleLogBtn?.addEventListener("click", () => { const isHidden = logEl.hasAttribute("hidden"); if (isHidden) { logEl.removeAttribute("hidden"); toggleLogBtn.textContent = "Hide activity"; } else { logEl.setAttribute("hidden", "hidden"); toggleLogBtn.textContent = "Show activity"; } });
 downloadOfflineModelsBtn?.addEventListener("click", () => void downloadOfflineModels());
 removeSelectedModelBtn?.addEventListener("click", async () => { const { sourceLanguage, targetLanguage, modelName } = getCurrentLanguageSelection(); if (!modelName) { log(`cannot remove unsupported pair: ${sourceLanguage} → ${targetLanguage}`); return; } await releaseLocalTranslation(modelName); removeDownloadedModel(modelName); updateDownloadedPairsList(); updateOfflinePairStatus(); log("removed selected model readiness record:", modelName); log("browser-managed Transformers.js cache files may remain until browser storage is cleared"); if (navigator.serviceWorker?.controller) navigator.serviceWorker.controller.postMessage({ type: "REMOVE_MODEL_CACHE", modelName }); });

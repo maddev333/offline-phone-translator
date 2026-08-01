@@ -264,6 +264,12 @@
         </div>
         <p id="asrProgress" class="hint">Download once, then reuse the browser-cached model offline.</p>
         <div id="asrTranscript" class="hint" aria-live="polite">Listening transcript will appear here.</div>
+        <div class="language-row" style="margin-top: 12px;">
+          <div class="field">
+            <label for="asrLanguage">Spoken language</label>
+            <select id="asrLanguage"></select>
+          </div>
+        </div>
         <div class="actions-row" style="margin-top: 12px;">
           <button id="downloadAsrModel" type="button" class="ghost">Download ASR model</button>
           <button id="toggleLiveTranscription" type="button" class="primary" disabled>Start listening</button>

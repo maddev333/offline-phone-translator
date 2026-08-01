@@ -1,9 +1,13 @@
+import { LANGUAGES, AUTO_DETECT_LANG_ID } from "./languages.js";
+
 const SR = 16000;
 const CHUNK_SAMPLES = 3200;
-const state = { worker: null, ready: false, loading: false, listening: false, requestId: 0, audioContext: null, stream: null, source: null, worklet: null, chunks: [], chunkLength: 0 };
+const ASR_CACHE_NAME = "nemotron-asr-int4-v1";
+const ASR_LANGUAGE_STORAGE_KEY = "offline-translator-asr-language";
+const state = { worker: null, ready: false, loading: false, listening: false, requestId: 0, audioContext: null, stream: null, source: null, worklet: null, chunks: [], chunkLength: 0, langLocale: null };
 const el = {
   status: document.getElementById("asrStatus"), progress: document.getElementById("asrProgress"), transcript: document.getElementById("asrTranscript"),
-  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"),
+  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"), language: document.getElementById("asrLanguage"),
 };
 function setStatus(text, kind = "warn") { if (!el.status) return; el.status.textContent = text; el.status.className = `status ${kind}`; }
 function setProgress(text) { if (el.progress) el.progress.textContent = text; }
@@ -12,8 +16,23 @@ function updateControls() {
   if (el.load) { el.load.disabled = state.ready || state.loading || state.listening; el.load.textContent = state.ready ? "ASR model ready" : state.loading ? "Downloading ASR model…" : "Download ASR model"; }
   if (el.listen) { el.listen.disabled = !state.ready && !state.listening; el.listen.textContent = state.listening ? "Stop listening" : "Start listening"; }
   if (el.clear) el.clear.disabled = state.loading || state.listening;
+  // The language prompt is baked into the encoder state at streamStart, so it can only change between sessions.
+  if (el.language) el.language.disabled = state.listening;
 }
-function dispatchTranscript(text, lang, final) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang, final, autoTranslate: Boolean(el.autoTranslate?.checked) } })); }
+function getSavedAsrLanguage() { try { return localStorage.getItem(ASR_LANGUAGE_STORAGE_KEY) || "auto"; } catch { return "auto"; } }
+function saveAsrLanguage(value) { try { localStorage.setItem(ASR_LANGUAGE_STORAGE_KEY, value); } catch {} }
+function renderAsrLanguageOptions() {
+  if (!el.language) return;
+  const saved = getSavedAsrLanguage();
+  el.language.innerHTML = ['<option value="auto">Auto-detect</option>'].concat(Object.keys(LANGUAGES).map((name) => `<option value="${name}">${name}</option>`)).join("");
+  el.language.value = LANGUAGES[saved] ? saved : "auto";
+}
+function getSelectedAsrLanguage() {
+  const selected = el.language?.value || "auto";
+  const info = LANGUAGES[selected];
+  return info ? { langId: info.asrLangId, locale: info.asrLocale } : { langId: AUTO_DETECT_LANG_ID, locale: null };
+}
+function dispatchTranscript(text, lang, final) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang: lang || state.langLocale, final, autoTranslate: Boolean(el.autoTranslate?.checked) } })); }
 function ensureWorker() {
   if (state.worker) return state.worker;
   const worker = new Worker(new URL("./asr/worker.js", import.meta.url), { type: "module" });
@@ -49,12 +68,13 @@ async function startListening() {
   if (state.listening || !state.ready) return;
   try {
     state.requestId += 1; state.chunks = []; state.chunkLength = 0;
+    const { langId, locale } = getSelectedAsrLanguage(); state.langLocale = locale;
     state.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
     state.audioContext = new AudioContext(); if (state.audioContext.state === "suspended") await state.audioContext.resume();
     await state.audioContext.audioWorklet.addModule(new URL("./asr/mic-processor.js", import.meta.url));
     state.source = state.audioContext.createMediaStreamSource(state.stream); state.worklet = new AudioWorkletNode(state.audioContext, "mic-processor", { processorOptions: { targetSampleRate: SR } });
     state.worklet.port.onmessage = (event) => acceptAudio(event.data); state.source.connect(state.worklet); state.worklet.connect(state.audioContext.destination); state.listening = true;
-    setTranscript(""); setStatus("Starting microphone…", "warn"); ensureWorker().postMessage({ type: "streamStart", langId: 0, requestId: state.requestId }); updateControls();
+    setTranscript(""); setStatus("Starting microphone…", "warn"); ensureWorker().postMessage({ type: "streamStart", langId, requestId: state.requestId }); updateControls();
   } catch (error) { await stopListening(false); setStatus("Microphone unavailable", "err"); setProgress(error?.name === "NotAllowedError" ? "Microphone permission was denied." : error?.message || String(error)); }
 }
 async function stopListening(finalize = true) {
@@ -67,13 +87,22 @@ async function stopListening(finalize = true) {
 }
 async function clearModelCache() {
   if (state.listening) await stopListening(false);
-  if (state.worker) { state.worker.postMessage({ type: "clearCache" }); state.worker.terminate(); } else { try { await caches.delete("nemotron-asr-int4-v1"); } catch {} }
-  state.worker = null; state.ready = false; state.loading = false; setStatus("ASR model not downloaded", "warn"); setProgress("Download the speech model before starting live transcription."); updateControls();
+  // Terminate first, then delete from the page: posting "clearCache" and calling
+  // terminate() back to back can kill the worker before it handles the message.
+  if (state.worker) { state.worker.terminate(); state.worker = null; }
+  state.ready = false; state.loading = false;
+  let cleared = true;
+  try { await caches.delete(ASR_CACHE_NAME); } catch { cleared = false; }
+  setStatus("ASR model not downloaded", "warn");
+  setProgress(cleared ? "Download the speech model before starting live transcription." : "Could not remove the cached ASR model. Clear browser storage to reclaim the space.");
+  updateControls();
 }
 el.load?.addEventListener("click", () => void loadModel());
 el.listen?.addEventListener("click", () => void (state.listening ? stopListening(true) : startListening()));
 el.clear?.addEventListener("click", () => void clearModelCache());
+el.language?.addEventListener("change", () => saveAsrLanguage(el.language.value));
 window.addEventListener("pagehide", () => void stopListening(false));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.listening) void stopListening(true); });
 if (!navigator.gpu) { setStatus("WebGPU unavailable", "err"); setProgress("Manual text translation still works. Live Nemotron transcription is unavailable on this device."); } else { setStatus("ASR model not loaded", "warn"); setProgress("Download once, then the browser can reuse the cached model offline."); }
+renderAsrLanguageOptions();
 updateControls();

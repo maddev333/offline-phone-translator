@@ -1,4 +1,5 @@
-const STATIC_CACHE = "offline-phone-translator-static-v2";
+const CACHE_PREFIX = "offline-phone-translator-static-";
+const STATIC_CACHE = `${CACHE_PREFIX}v4`;
 
 function getBasePath() {
   const url = new URL(self.location.href);
@@ -16,7 +17,12 @@ function getAppAssets() {
     toAppUrl(`${basePath}index.html`),
     toAppUrl(`${basePath}app.js`),
     toAppUrl(`${basePath}config.js`),
+    toAppUrl(`${basePath}languages.js`),
     toAppUrl(`${basePath}local-translation.js`),
+    toAppUrl(`${basePath}asr-live.js`),
+    toAppUrl(`${basePath}asr/worker.js`),
+    toAppUrl(`${basePath}asr/shared.js`),
+    toAppUrl(`${basePath}asr/mic-processor.js`),
     toAppUrl(`${basePath}manifest.webmanifest`),
   ];
 }
@@ -29,11 +35,13 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  // Only prune this app's own shell caches. Deleting every cache in the origin
+  // would wipe the multi-hundred-megabyte ASR and Transformers.js model caches.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== STATIC_CACHE)
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== STATIC_CACHE)
           .map((key) => caches.delete(key))
       )
     )
@@ -47,22 +55,36 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
+  // Cross-origin traffic (CDN libraries, Hugging Face model files) manages its
+  // own caching. Mirroring it here would store the ASR model a second time.
+  if (new URL(request.url).origin !== self.location.origin) {
+    return;
+  }
 
-      return fetch(request)
-        .then((response) => {
-          const responseToCache = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => {
-            cache.put(request, responseToCache);
-          });
-          return response;
+  event.respondWith(
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) =>
+        cache.match(request).then((cached) => {
+          if (cached) {
+            return cached;
+          }
+
+          return fetch(request)
+            .then((response) => {
+              if (response.ok && response.type === "basic") {
+                cache.put(request, response.clone());
+              }
+              return response;
+            })
+            .catch(() => {
+              if (request.mode === "navigate") {
+                return cache.match(toAppUrl(`${getBasePath()}index.html`));
+              }
+              return Response.error();
+            });
         })
-        .catch(() => caches.match(toAppUrl(`${getBasePath()}index.html`)));
-    })
+      )
   );
 });
 
@@ -74,7 +96,7 @@ self.addEventListener("message", (event) => {
   const { modelName, basePath } = event.data;
   event.waitUntil(
     caches.keys().then(async (keys) => {
-      for (const key of keys) {
+      for (const key of keys.filter((name) => name.startsWith(CACHE_PREFIX))) {
         const cache = await caches.open(key);
         const requests = await cache.keys();
         await Promise.all(
