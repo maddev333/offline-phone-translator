@@ -255,6 +255,27 @@
       </div>
 
       <div class="panel">
+        <div class="title-row">
+          <div>
+            <h2 class="section-title">Live transcription</h2>
+            <p class="hint helper-text">Nemotron runs locally with WebGPU. The first download is about 750 MB.</p>
+          </div>
+          <span id="asrStatus" class="status warn">ASR model not loaded</span>
+        </div>
+        <p id="asrProgress" class="hint">Download once, then reuse the browser-cached model offline.</p>
+        <div id="asrTranscript" class="hint" aria-live="polite">Listening transcript will appear here.</div>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="downloadAsrModel" type="button" class="ghost">Download ASR model</button>
+          <button id="toggleLiveTranscription" type="button" class="primary" disabled>Start listening</button>
+          <button id="clearAsrModel" type="button" class="ghost">Remove ASR model</button>
+        </div>
+        <label class="hint" style="display: inline-flex; gap: 8px; align-items: center; margin-top: 12px;">
+          <input id="autoTranslateTranscript" type="checkbox" checked />
+          Translate final transcripts automatically
+        </label>
+      </div>
+
+      <div class="panel">
         <div class="field">
           <label for="translationInput">What do you want to say?</label>
           <textarea id="translationInput" placeholder="Type something like: Where is the station?"></textarea>
@@ -291,9 +312,9 @@
         </div>
         <div id="log"></div>
       </div>
+    </div>
     <script>
       window.__APP_BASE_PATH__ = new URL("./", window.location.href).pathname;
-
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("./sw.js", {
@@ -305,5 +326,6 @@
       }
     </script>
     <script type="module" src="./app.js"></script>
+    <script type="module" src="./asr-live.js"></script>
   </body>
 </html>
