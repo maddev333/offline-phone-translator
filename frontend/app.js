@@ -65,7 +65,7 @@ const live = {
   active: false, session: 0, committed: 0, lastText: "", tail: "",
   rows: [], preview: "", previewSource: "", previewRoute: null,
   queue: [], busy: false, dirty: false, idleTimer: null, langApplied: false,
-  markCursor: 0, tagOrientation: null, currentLanguage: null,
+  markCursor: 0, tagOrientation: null, currentLanguage: null, turnId: 0, rowSeq: 0, turnLanguages: {},
 };
 // Auto-switching overwrites the stored target, so keep the user's own English-source choice separately.
 let preferredEnglishTarget = null;
@@ -190,9 +190,9 @@ function resolveConversationRoute(detected) {
   return { sourceLanguage, targetLanguage: sourceLanguage === english ? partner : english };
 }
 function getActiveRoute() {
-  if (isConversationMode()) return resolveConversationRoute(live.currentLanguage || getConversationSides().sideA);
+  if (isConversationMode()) return { ...resolveConversationRoute(live.currentLanguage || getConversationSides().sideA), turnId: live.turnId };
   const { sourceLanguage, targetLanguage } = getCurrentLanguageSelection();
-  return { sourceLanguage, targetLanguage };
+  return { sourceLanguage, targetLanguage, turnId: live.turnId };
 }
 function getPreferredEnglishTarget() {
   const targets = SUPPORTED_LANGUAGE_PAIRS.English || [];
@@ -261,24 +261,24 @@ async function runLocalTranslation() {
 
 function resetLiveTranslation() {
   clearTimeout(live.idleTimer);
-  Object.assign(live, { session: live.session + 1, committed: 0, lastText: "", tail: "", rows: [], preview: "", previewSource: "", previewRoute: null, queue: [], idleTimer: null, langApplied: false, markCursor: 0, tagOrientation: null, currentLanguage: null });
+  Object.assign(live, { session: live.session + 1, committed: 0, lastText: "", tail: "", rows: [], preview: "", previewSource: "", previewRoute: null, queue: [], idleTimer: null, langApplied: false, markCursor: 0, tagOrientation: null, currentLanguage: null, turnId: 0, rowSeq: 0, turnLanguages: {} });
 }
 function appendConversationRow(route, source, translated) {
   const last = live.rows[live.rows.length - 1];
-  // Consecutive sentences from the same speaker stay in one row; a language switch opens a new one.
-  if (last && last.sourceLanguage === route.sourceLanguage && last.targetLanguage === route.targetLanguage) {
+  // Rows merge only inside one speaker turn, so a late tag can re-route the whole turn.
+  if (last && last.turnId === route.turnId) {
     last.source = `${last.source} ${source}`.trim();
     last.translated = `${last.translated} ${translated}`.trim();
     return;
   }
-  live.rows.push({ ...route, source, translated });
+  live.rows.push({ id: (live.rowSeq += 1), turnId: route.turnId, sourceLanguage: route.sourceLanguage, targetLanguage: route.targetLanguage, source, translated });
 }
 function getDisplayRows() {
   const rows = live.rows.map((row) => ({ ...row }));
   if (!live.previewSource) return rows;
   const route = live.previewRoute || getActiveRoute();
   const last = rows[rows.length - 1];
-  if (last && last.sourceLanguage === route.sourceLanguage && last.targetLanguage === route.targetLanguage) {
+  if (last && last.turnId === route.turnId) {
     last.sourcePreview = live.previewSource; last.translatedPreview = live.preview;
     return rows;
   }
@@ -353,10 +353,13 @@ function pumpLiveTranslation() {
         live.dirty = false;
         while (live.queue.length) {
           const item = live.queue.shift();
-          const text = await translateLiveSegment(item.source, item.route);
+          // A tag can confirm this turn's language after the segment was queued or while it translates.
+          const route = correctRoute(item.route);
+          const text = await translateLiveSegment(item.source, route);
           if (live.session !== session) return;
           // The row is recorded even when translation fails so the transcript itself is never lost.
-          appendConversationRow(item.route, item.source, text);
+          if (item.rowId) { const row = live.rows.find((candidate) => candidate.id === item.rowId); if (row) { Object.assign(row, { sourceLanguage: route.sourceLanguage, targetLanguage: route.targetLanguage, translated: text }); } }
+          else appendConversationRow(route, item.source, text);
           live.preview = ""; live.previewSource = ""; live.previewRoute = null; renderLiveTranslation(); speakText(text, { queue: true });
         }
         const tail = live.tail.trim();
@@ -384,33 +387,61 @@ function commitLiveRange(text, end) {
   queueLiveSegment(text.slice(live.committed, boundary));
   live.committed = boundary;
 }
+// A trailing tag only names its language once the utterance has ended, by which time the text
+// may already be translated, queued, or on screen under the previous speaker's direction.
+// `turnLanguages` records the confirmed answer so every one of those cases can be corrected.
+function correctRoute(route) {
+  const confirmed = live.turnLanguages[route.turnId];
+  if (!confirmed || confirmed === route.sourceLanguage) return route;
+  return { ...resolveConversationRoute(confirmed), turnId: route.turnId };
+}
+function retagCurrentTurn(language) {
+  const route = resolveConversationRoute(language);
+  let changed = false;
+  for (const row of live.rows) {
+    if (row.turnId !== live.turnId || row.sourceLanguage === route.sourceLanguage) continue;
+    log(`retagged turn: ${row.sourceLanguage} → ${row.targetLanguage} became ${route.sourceLanguage} → ${route.targetLanguage}`);
+    row.sourceLanguage = route.sourceLanguage; row.targetLanguage = route.targetLanguage; row.translated = "";
+    live.queue.push({ source: row.source, route: { ...route, turnId: row.turnId }, rowId: row.id });
+    changed = true;
+  }
+  if (changed) renderLiveTranslation();
+}
 // Nemotron may announce the language before an utterance or confirm it afterwards.
 // The offset of the first tag reveals which, and that answer holds for the whole session.
 function processLangMarks(text, marks) {
-  if (!Array.isArray(marks)) return;
+  if (!Array.isArray(marks) || live.markCursor >= marks.length) return false;
   while (live.markCursor < marks.length) {
     const mark = marks[live.markCursor];
     live.markCursor += 1;
     if (!live.tagOrientation) live.tagOrientation = mark.index <= 1 ? "leading" : "trailing";
     const language = findLanguageByLocale(mark.lang);
     if (live.tagOrientation === "trailing") {
-      // A trailing tag belongs to the text in front of it, so adopt it before flushing that text.
-      if (language) live.currentLanguage = language;
+      if (language && language !== live.currentLanguage) {
+        live.turnLanguages[live.turnId] = language;
+        retagCurrentTurn(language);
+        live.currentLanguage = language;
+      }
       commitLiveRange(text, mark.index);
+      // Every tag closes a turn, so later text can never merge into the row before it.
+      live.turnId += 1;
     } else {
       commitLiveRange(text, mark.index);
-      if (language) live.currentLanguage = language;
+      live.turnId += 1;
+      if (language) { live.currentLanguage = language; live.turnLanguages[live.turnId] = language; }
     }
-    if (language) log(`conversation turn: ${language} → ${resolveConversationRoute(language).targetLanguage}`);
+    if (language) log(`speaker turn (${live.tagOrientation} ${mark.lang} @${mark.index}): ${language} \u2192 ${resolveConversationRoute(language).targetLanguage}`);
   }
+  return true;
 }
 function handleLivePartial(text, marks) {
+  const conversation = isConversationMode();
+  // A tag is stripped from the text, so the partial that carries it can look unchanged.
+  // Turns are resolved before the guard below, which exists only to keep the idle timer alive.
+  if (conversation && processLangMarks(text, marks)) pumpLiveTranslation();
   // Unchanged partials mean silence, so leave the idle timer running to settle the tail.
   if (text === live.lastText) return;
   live.lastText = text;
-  // Speaker turns are resolved first so the sentence commits below use the right direction.
-  const conversation = isConversationMode();
-  if (conversation) processLangMarks(text, marks);
   // With trailing tags a finished sentence has no language yet, so the tag is the only safe
   // commit boundary; the idle flush and the word cap below still act as backstops.
   const trailingTurns = conversation && live.tagOrientation === "trailing";
