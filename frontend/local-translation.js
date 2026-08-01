@@ -13,6 +13,7 @@ const DEFAULT_MODEL = "Xenova/opus-mt-en-es";
 const DEFAULT_MAX_NEW_TOKENS = 96;
 
 const runtimePromises = new Map();
+const loadedModels = new Set();
 
 function getLocalConfig() {
   const config = window.__APP_CONFIG__ || {};
@@ -45,16 +46,47 @@ async function loadRuntime(modelName) {
     };
 
     const translator = await pipeline("translation", resolvedModel, options);
+    loadedModels.add(resolvedModel);
 
     return { translator, model: resolvedModel };
   })();
 
   runtimePromises.set(resolvedModel, runtimePromise);
-  return runtimePromise;
+  try {
+    return await runtimePromise;
+  } catch (error) {
+    if (runtimePromises.get(resolvedModel) === runtimePromise) {
+      runtimePromises.delete(resolvedModel);
+    }
+    loadedModels.delete(resolvedModel);
+    throw error;
+  }
 }
 
 export function isLocalTranslationEnabled() {
   return getLocalConfig().enabled;
+}
+
+export function isLocalTranslationLoaded(model) {
+  const resolvedModel = model || getLocalConfig().model;
+  return loadedModels.has(resolvedModel);
+}
+
+export async function releaseLocalTranslation(model) {
+  const resolvedModel = model || getLocalConfig().model;
+  const runtimePromise = runtimePromises.get(resolvedModel);
+  runtimePromises.delete(resolvedModel);
+  loadedModels.delete(resolvedModel);
+
+  if (!runtimePromise) return;
+  try {
+    const { translator } = await runtimePromise;
+    if (typeof translator?.dispose === "function") {
+      await translator.dispose();
+    }
+  } catch {
+    // A failed load has no runtime resources to release.
+  }
 }
 
 export async function preloadLocalTranslation(model) {
@@ -88,4 +120,3 @@ export async function runLocalTranslationPrompt({ prompt, model, onToken }) {
 
   return text;
 }
-

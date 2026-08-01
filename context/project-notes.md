@@ -6,7 +6,8 @@ This repository is a browser-based offline translation prototype with:
 - a minimal Express server for local hosting
 - a static frontend in `frontend/`
 - local translation via Transformers.js in the browser
-- service-worker caching for offline app-shell support
+- service-worker caching for offline app-shell support, scoped to app-owned caches
+- retryable model loading and explicit in-memory pipeline release
 
 Current supported language directions:
 - English → Spanish
