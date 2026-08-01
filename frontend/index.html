@@ -83,6 +83,10 @@
         font-size: 18px;
         line-height: 1.5;
       }
+      #translationOutput .live-preview {
+        color: var(--muted);
+        font-style: italic;
+      }
       #log {
         border: 1px solid var(--border);
         border-radius: 12px;
@@ -275,10 +279,16 @@
           <button id="toggleLiveTranscription" type="button" class="primary" disabled>Start listening</button>
           <button id="clearAsrModel" type="button" class="ghost">Remove ASR model</button>
         </div>
-        <label class="hint" style="display: inline-flex; gap: 8px; align-items: center; margin-top: 12px;">
-          <input id="autoTranslateTranscript" type="checkbox" checked />
-          Translate final transcripts automatically
-        </label>
+        <div style="display: grid; gap: 8px; margin-top: 12px; justify-items: start;">
+          <label class="hint" style="display: inline-flex; gap: 8px; align-items: center;">
+            <input id="autoTranslateTranscript" type="checkbox" checked />
+            Translate transcripts automatically
+          </label>
+          <label class="hint" style="display: inline-flex; gap: 8px; align-items: center;">
+            <input id="liveTranslateTranscript" type="checkbox" checked />
+            Translate while I speak instead of waiting for me to stop
+          </label>
+        </div>
       </div>
 
       <div class="panel">

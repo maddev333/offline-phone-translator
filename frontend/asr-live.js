@@ -7,7 +7,7 @@ const ASR_LANGUAGE_STORAGE_KEY = "offline-translator-asr-language";
 const state = { worker: null, ready: false, loading: false, listening: false, requestId: 0, audioContext: null, stream: null, source: null, worklet: null, chunks: [], chunkLength: 0, langLocale: null };
 const el = {
   status: document.getElementById("asrStatus"), progress: document.getElementById("asrProgress"), transcript: document.getElementById("asrTranscript"),
-  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"), language: document.getElementById("asrLanguage"),
+  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"), liveTranslate: document.getElementById("liveTranslateTranscript"), language: document.getElementById("asrLanguage"),
 };
 function setStatus(text, kind = "warn") { if (!el.status) return; el.status.textContent = text; el.status.className = `status ${kind}`; }
 function setProgress(text) { if (el.progress) el.progress.textContent = text; }
@@ -32,7 +32,8 @@ function getSelectedAsrLanguage() {
   const info = LANGUAGES[selected];
   return info ? { langId: info.asrLangId, locale: info.asrLocale } : { langId: AUTO_DETECT_LANG_ID, locale: null };
 }
-function dispatchTranscript(text, lang, final) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang: lang || state.langLocale, final, autoTranslate: Boolean(el.autoTranslate?.checked) } })); }
+function dispatchTranscript(text, lang, final) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang: lang || state.langLocale, final, autoTranslate: Boolean(el.autoTranslate?.checked), live: Boolean(el.liveTranslate?.checked) } })); }
+function dispatchListeningState(listening) { window.dispatchEvent(new CustomEvent("offline-translator:asr-listening", { detail: { listening } })); }
 function ensureWorker() {
   if (state.worker) return state.worker;
   const worker = new Worker(new URL("./asr/worker.js", import.meta.url), { type: "module" });
@@ -74,12 +75,14 @@ async function startListening() {
     await state.audioContext.audioWorklet.addModule(new URL("./asr/mic-processor.js", import.meta.url));
     state.source = state.audioContext.createMediaStreamSource(state.stream); state.worklet = new AudioWorkletNode(state.audioContext, "mic-processor", { processorOptions: { targetSampleRate: SR } });
     state.worklet.port.onmessage = (event) => acceptAudio(event.data); state.source.connect(state.worklet); state.worklet.connect(state.audioContext.destination); state.listening = true;
-    setTranscript(""); setStatus("Starting microphone…", "warn"); ensureWorker().postMessage({ type: "streamStart", langId, requestId: state.requestId }); updateControls();
+    setTranscript(""); setStatus("Starting microphone…", "warn"); dispatchListeningState(true); ensureWorker().postMessage({ type: "streamStart", langId, requestId: state.requestId }); updateControls();
   } catch (error) { await stopListening(false); setStatus("Microphone unavailable", "err"); setProgress(error?.name === "NotAllowedError" ? "Microphone permission was denied." : error?.message || String(error)); }
 }
 async function stopListening(finalize = true) {
   if (state.listening && finalize) { flushAudio(); state.worker?.postMessage({ type: "streamEnd", requestId: state.requestId }); }
+  const wasListening = state.listening;
   state.listening = false; if (!finalize) state.requestId += 1;
+  if (wasListening) dispatchListeningState(false);
   if (state.worklet) { state.worklet.port.onmessage = null; state.worklet.disconnect(); }
   state.source?.disconnect(); for (const track of state.stream?.getTracks?.() || []) track.stop(); if (state.audioContext && state.audioContext.state !== "closed") await state.audioContext.close();
   state.audioContext = null; state.stream = null; state.source = null; state.worklet = null; state.chunks = []; state.chunkLength = 0;
