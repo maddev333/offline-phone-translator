@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "offline-phone-translator-static-";
-const STATIC_CACHE = `${CACHE_PREFIX}v5`;
+const STATIC_CACHE = `${CACHE_PREFIX}v6`;
 
 function getBasePath() {
   const url = new URL(self.location.href);

@@ -293,15 +293,39 @@ export class StreamingMel {
   }
 }
 
+const LANG_TAG = /<([a-z]{2}-[A-Za-z]{2,3})>\s*/g;
+
+// The emitted token list is append-only across a whole streaming session, so a
+// multi-speaker session carries one language tag per utterance rather than a
+// single trailing one. Every tag is stripped and its offset in the cleaned text
+// is reported so callers can split the transcript into speaker turns.
 export function detok(ids, vocab) {
   let s = "";
   for (const id of ids) s += vocab[id] ?? "";
   s = s.replace(/\u2581/g, " ");
-  let lang = null;
-  const m = s.match(/\s*<([a-z]{2}-[A-Za-z]{2,3})>\s*$/);
-  if (m) {
-    lang = m[1];
-    s = s.slice(0, m.index);
+
+  const langMarks = [];
+  let text = "";
+  let cursor = 0;
+  let match;
+  LANG_TAG.lastIndex = 0;
+  while ((match = LANG_TAG.exec(s)) !== null) {
+    text += s.slice(cursor, match.index);
+    langMarks.push({ lang: match[1], index: text.length });
+    cursor = match.index + match[0].length;
   }
-  return { text: s.trim(), lang };
+  text += s.slice(cursor);
+
+  // Trimming the front shifts every offset, so rebase the marks onto the trimmed text.
+  const leading = text.length - text.trimStart().length;
+  const trimmed = text.trim();
+  for (const mark of langMarks) {
+    mark.index = Math.min(Math.max(mark.index - leading, 0), trimmed.length);
+  }
+
+  return {
+    text: trimmed,
+    lang: langMarks.length ? langMarks[langMarks.length - 1].lang : null,
+    langMarks,
+  };
 }

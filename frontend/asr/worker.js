@@ -281,17 +281,18 @@ async function transcribeFull(samples, langId, requestId) {
     }
     const validNew = Math.min(C.NEW_FRAMES, mel.length - base);
     await encoderStep(s, buf, C.CACHE_FRAMES + validNew);
-    const { text, lang } = detok(s.emitted, VOCAB);
+    const { text, lang, langMarks } = detok(s.emitted, VOCAB);
     post({
       type: "partial",
       text,
       lang,
+      langMarks,
       progress: (step + 1) / steps,
       requestId,
     });
   }
-  const { text, lang } = detok(s.emitted, VOCAB);
-  post({ type: "final", text, lang, tokens: s.emitted.length, requestId });
+  const { text, lang, langMarks } = detok(s.emitted, VOCAB);
+  post({ type: "final", text, lang, langMarks, tokens: s.emitted.length, requestId });
 }
 
 let stream = null;
@@ -317,8 +318,8 @@ async function streamAudio(samples, requestId) {
     C.NEW_FRAMES
   ) {
     await runStreamBlock(C.NEW_FRAMES);
-    const { text, lang } = detok(stream.state.emitted, VOCAB);
-    post({ type: "partial", text, lang, requestId: stream.requestId });
+    const { text, lang, langMarks } = detok(stream.state.emitted, VOCAB);
+    post({ type: "partial", text, lang, langMarks, requestId: stream.requestId });
   }
   post({ type: "stream-tick", requestId: stream.requestId });
 }
@@ -350,11 +351,12 @@ async function streamEnd(requestId) {
   if (remaining > 0) {
     await runStreamBlock(Math.min(C.NEW_FRAMES, remaining));
   }
-  const { text, lang } = detok(stream.state.emitted, VOCAB);
+  const { text, lang, langMarks } = detok(stream.state.emitted, VOCAB);
   post({
     type: "final",
     text,
     lang,
+    langMarks,
     tokens: stream.state.emitted.length,
     requestId: stream.requestId,
   });

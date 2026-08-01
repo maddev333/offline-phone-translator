@@ -7,7 +7,7 @@ const ASR_LANGUAGE_STORAGE_KEY = "offline-translator-asr-language";
 const state = { worker: null, ready: false, loading: false, listening: false, requestId: 0, audioContext: null, stream: null, source: null, worklet: null, chunks: [], chunkLength: 0, langLocale: null };
 const el = {
   status: document.getElementById("asrStatus"), progress: document.getElementById("asrProgress"), transcript: document.getElementById("asrTranscript"),
-  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"), liveTranslate: document.getElementById("liveTranslateTranscript"), language: document.getElementById("asrLanguage"),
+  load: document.getElementById("downloadAsrModel"), listen: document.getElementById("toggleLiveTranscription"), clear: document.getElementById("clearAsrModel"), autoTranslate: document.getElementById("autoTranslateTranscript"), liveTranslate: document.getElementById("liveTranslateTranscript"), language: document.getElementById("asrLanguage"), conversation: document.getElementById("conversationMode"),
 };
 function setStatus(text, kind = "warn") { if (!el.status) return; el.status.textContent = text; el.status.className = `status ${kind}`; }
 function setProgress(text) { if (el.progress) el.progress.textContent = text; }
@@ -17,7 +17,12 @@ function updateControls() {
   if (el.listen) { el.listen.disabled = !state.ready && !state.listening; el.listen.textContent = state.listening ? "Stop listening" : "Start listening"; }
   if (el.clear) el.clear.disabled = state.loading || state.listening;
   // The language prompt is baked into the encoder state at streamStart, so it can only change between sessions.
-  if (el.language) el.language.disabled = state.listening;
+  // A two-person conversation needs both languages recognised, which only auto-detect can do.
+  if (el.language) {
+    const conversationOn = Boolean(el.conversation?.checked);
+    if (conversationOn) el.language.value = "auto";
+    el.language.disabled = state.listening || conversationOn;
+  }
 }
 function getSavedAsrLanguage() { try { return localStorage.getItem(ASR_LANGUAGE_STORAGE_KEY) || "auto"; } catch { return "auto"; } }
 function saveAsrLanguage(value) { try { localStorage.setItem(ASR_LANGUAGE_STORAGE_KEY, value); } catch {} }
@@ -28,11 +33,11 @@ function renderAsrLanguageOptions() {
   el.language.value = LANGUAGES[saved] ? saved : "auto";
 }
 function getSelectedAsrLanguage() {
-  const selected = el.language?.value || "auto";
+  const selected = el.conversation?.checked ? "auto" : el.language?.value || "auto";
   const info = LANGUAGES[selected];
   return info ? { langId: info.asrLangId, locale: info.asrLocale } : { langId: AUTO_DETECT_LANG_ID, locale: null };
 }
-function dispatchTranscript(text, lang, final) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang: lang || state.langLocale, final, autoTranslate: Boolean(el.autoTranslate?.checked), live: Boolean(el.liveTranslate?.checked) } })); }
+function dispatchTranscript(text, lang, final, langMarks) { window.dispatchEvent(new CustomEvent("offline-translator:asr-transcript", { detail: { text, lang: lang || state.langLocale, langMarks: langMarks || [], final, autoTranslate: Boolean(el.autoTranslate?.checked), live: Boolean(el.liveTranslate?.checked) } })); }
 function dispatchListeningState(listening) { window.dispatchEvent(new CustomEvent("offline-translator:asr-listening", { detail: { listening } })); }
 function ensureWorker() {
   if (state.worker) return state.worker;
@@ -46,8 +51,8 @@ function ensureWorker() {
       case "ready": state.ready = true; state.loading = false; setStatus(`ASR ready (${message.encoderEP || "WebGPU"})`, "ok"); setProgress("Model files are cached by the browser for later offline use."); updateControls(); break;
       case "stream-ready": setStatus("Listening", "ok"); break;
       case "stream-tick": break;
-      case "partial": setTranscript(message.text); dispatchTranscript(message.text, message.lang, false); break;
-      case "final": setTranscript(message.text); dispatchTranscript(message.text, message.lang, true); setStatus(state.listening ? "Listening" : "ASR ready", "ok"); break;
+      case "partial": setTranscript(message.text); dispatchTranscript(message.text, message.lang, false, message.langMarks); break;
+      case "final": setTranscript(message.text); dispatchTranscript(message.text, message.lang, true, message.langMarks); setStatus(state.listening ? "Listening" : "ASR ready", "ok"); break;
       case "error": state.loading = false; void stopListening(false); setStatus("ASR error", "err"); setProgress(message.message || "Speech recognition failed."); updateControls(); break;
     }
   };
@@ -104,6 +109,7 @@ el.load?.addEventListener("click", () => void loadModel());
 el.listen?.addEventListener("click", () => void (state.listening ? stopListening(true) : startListening()));
 el.clear?.addEventListener("click", () => void clearModelCache());
 el.language?.addEventListener("change", () => saveAsrLanguage(el.language.value));
+el.conversation?.addEventListener("change", () => updateControls());
 window.addEventListener("pagehide", () => void stopListening(false));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.listening) void stopListening(true); });
 if (!navigator.gpu) { setStatus("WebGPU unavailable", "err"); setProgress("Manual text translation still works. Live Nemotron transcription is unavailable on this device."); } else { setStatus("ASR model not loaded", "warn"); setProgress("Download once, then the browser can reuse the cached model offline."); }

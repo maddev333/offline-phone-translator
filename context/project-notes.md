@@ -23,7 +23,10 @@ Current scope:
 - text translation
 - live transcription in 22 languages, with auto-detect or an explicit spoken language
 - automatic translation-direction switching from the detected speech language
-- optional speech synthesis for translated output
+- two-person conversation mode: pick Person A and Person B (one side must be English),
+  and each detected utterance is transcribed and translated into the other person's
+  language, shown as a running log of labelled turns
+- optional speech synthesis for translated output, suppressed in conversation mode
 - no authentication
 - no cloud speech or translation inference
 - no MCP integration

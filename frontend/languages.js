@@ -55,6 +55,12 @@ export const SUPPORTED_LANGUAGE_PAIRS = (() => {
   return pairs;
 })();
 
+// A two-person conversation needs both directions, so one-way languages such as
+// Japanese (to English only) or Romanian (from English only) cannot be a partner.
+export const CONVERSATION_PARTNER_LANGUAGES = Object.entries(LANGUAGES)
+  .filter(([, info]) => info.toEnglish && info.fromEnglish)
+  .map(([name]) => name);
+
 // Resolves a locale tag such as "es-ES" (or a bare "es") to a language name.
 export function findLanguageByLocale(locale) {
   const normalized = String(locale || "").trim().toLowerCase();

@@ -19,6 +19,8 @@
         --success: #146c2e;
       }
       * { box-sizing: border-box; }
+      /* .language-row sets display: flex, which would otherwise beat the UA rule for [hidden]. */
+      [hidden] { display: none !important; }
       body {
         font-family: Inter, Arial, sans-serif;
         margin: 0;
@@ -78,6 +80,8 @@
         border: 1px solid var(--border);
         border-radius: 12px;
         min-height: 120px;
+        max-height: 460px;
+        overflow-y: auto;
         padding: 14px;
         background: #f8fafc;
         font-size: 18px;
@@ -86,6 +90,33 @@
       #translationOutput .live-preview {
         color: var(--muted);
         font-style: italic;
+      }
+      .turn {
+        border-left: 3px solid var(--primary);
+        padding: 2px 0 2px 12px;
+        margin-bottom: 14px;
+      }
+      .turn[data-side="b"] {
+        border-left-color: #9333ea;
+      }
+      .turn:last-child {
+        margin-bottom: 0;
+      }
+      .turn-lang {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .turn-source {
+        font-size: 15px;
+        color: var(--muted);
+        margin-bottom: 2px;
+      }
+      .turn-target {
+        font-size: 18px;
       }
       #log {
         border: 1px solid var(--border);
@@ -228,7 +259,11 @@
 
       <div class="panel">
         <h2 class="section-title">Languages</h2>
-        <div class="language-row">
+        <label class="hint" style="display: inline-flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+          <input id="conversationMode" type="checkbox" />
+          Two-person conversation mode
+        </label>
+        <div class="language-row" id="manualLanguageRow">
           <div class="field">
             <label for="sourceLanguage">From</label>
             <select id="sourceLanguage"></select>
@@ -238,6 +273,22 @@
             <label for="targetLanguage">To</label>
             <select id="targetLanguage"></select>
           </div>
+        </div>
+        <div class="language-row" id="conversationRow" hidden>
+          <div class="field">
+            <label for="conversationSideA">Person A speaks</label>
+            <select id="conversationSideA"></select>
+          </div>
+          <div class="field">
+            <label for="conversationSideB">Person B speaks</label>
+            <select id="conversationSideB"></select>
+          </div>
+        </div>
+        <p class="hint helper-text" id="conversationHint" hidden>
+          Every translation model pivots through English, so one side must be English. Speech is
+          auto-detected and routed to the other person's language. Spoken output is off in this mode.
+        </p>
+        <div class="language-row" style="margin-top: 12px;">
           <button id="downloadOfflineModels" type="button" class="ghost">Download for offline use</button>
         </div>
       </div>
@@ -316,7 +367,7 @@
         </div>
         <div id="translationOutput" class="hint">Your translated text will appear here.</div>
         <div class="actions-row" style="margin-top: 12px;">
-          <button id="copyTranslation" type="button" class="ghost">Copy translation</button>
+          <button id="copyTranslation" type="button" class="ghost">Copy transcript</button>
           <button id="clearOutput" type="button" class="ghost">Clear output</button>
         </div>
       </div>
