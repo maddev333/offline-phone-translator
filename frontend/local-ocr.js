@@ -14,6 +14,25 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 env.useWasmCache = true;
 
+// Transformers.js 4.2.0 sends every Safari build to the plain ONNX Runtime wasm
+// (ort-wasm-simd-threaded.wasm) instead of the asyncify one. That build has no WebGPU
+// execution provider, so asking for device "webgpu" on iPadOS/macOS Safari dies with
+// "webgpuInit is not a function" and then "no available backend found". Upstream has
+// since narrowed that fallback to Safari without WebGPU, so do the same here: when the
+// browser really has WebGPU, point the runtime back at the asyncify build.
+function preferAsyncifyWasmRuntime() {
+  const onnx = env.backends?.onnx;
+  const paths = onnx?.wasm?.wasmPaths;
+  const ortVersion = onnx?.versions?.web;
+  if (!ortVersion || typeof navigator === "undefined" || !navigator.gpu) return;
+  // Only correct the CDN defaults Transformers.js just wrote; leave anything else alone.
+  if (typeof paths?.mjs !== "string" || paths.mjs.includes(".asyncify")) return;
+  const base = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ortVersion}/dist/ort-wasm-simd-threaded.asyncify`;
+  onnx.wasm.wasmPaths = { mjs: `${base}.mjs`, wasm: `${base}.wasm` };
+}
+
+preferAsyncifyWasmRuntime();
+
 const DEFAULT_MODEL = "onnx-community/GLM-OCR-ONNX";
 const DEFAULT_DTYPE = "q4f16";
 const DEFAULT_MAX_NEW_TOKENS = 1024;
