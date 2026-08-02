@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "offline-phone-translator-static-";
-const STATIC_CACHE = `${CACHE_PREFIX}v9`;
+const STATIC_CACHE = `${CACHE_PREFIX}v10`;
 
 function getBasePath() {
   const url = new URL(self.location.href);
@@ -15,10 +15,14 @@ function getAppAssets() {
   return [
     toAppUrl(basePath),
     toAppUrl(`${basePath}index.html`),
+    toAppUrl(`${basePath}ocr.html`),
+    toAppUrl(`${basePath}styles.css`),
     toAppUrl(`${basePath}app.js`),
     toAppUrl(`${basePath}config.js`),
     toAppUrl(`${basePath}languages.js`),
     toAppUrl(`${basePath}local-translation.js`),
+    toAppUrl(`${basePath}local-ocr.js`),
+    toAppUrl(`${basePath}ocr.js`),
     toAppUrl(`${basePath}model-cache.js`),
     toAppUrl(`${basePath}asr-live.js`),
     toAppUrl(`${basePath}asr/worker.js`),

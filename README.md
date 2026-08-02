@@ -12,7 +12,12 @@ A small browser-based offline translation prototype that can run as a static sit
 - optional automatic translation of final live transcripts
 - browser-cached ASR model files for repeat/offline use
 - optional speech synthesis for translated text
+- document OCR page: photograph a page, read it with GLM-OCR on WebGPU, translate it into English
 - service worker for offline app-shell caching
+
+## Pages
+- `frontend/index.html` — speak and translate (text input, live transcription, conversation mode)
+- `frontend/ocr.html` — document OCR and translation from a photo
 
 ## Project layout
 - `frontend/` — static browser app
@@ -33,8 +38,31 @@ window.__APP_CONFIG__ = {
     dtype: "fp32",
     maxNewTokens: 96,
   },
+  ocr: {
+    enabled: true,
+    model: "onnx-community/GLM-OCR-ONNX",
+    device: "webgpu",
+    dtype: "q4f16",
+    maxNewTokens: 1024,
+    maxImageSide: 1400,
+  },
 };
 ```
+
+## Document OCR
+The OCR page runs [`onnx-community/GLM-OCR-ONNX`](https://huggingface.co/onnx-community/GLM-OCR-ONNX),
+the Transformers.js export of `zai-org/GLM-OCR`, entirely in the browser on WebGPU.
+At the default `q4f16` precision the three ONNX sessions total about 630 MB and are
+cached by the browser for offline use, exactly like the ASR model.
+
+Recognition itself is script-independent, so the language selector on that page only
+chooses which `opus-mt-<lang>-en` model translates the recognised text. Photos are
+scaled down to `maxImageSide` before recognition, because GLM-OCR emits one visual
+token per 28x28 pixel block and a full-resolution phone photo would not fit in memory.
+
+The repo declares external ONNX data only for its fp32/fp16 weights, so
+`frontend/local-ocr.js` passes its own `use_external_data_format` map; without it the
+quantized weights load without their `.onnx_data` blobs.
 
 ## Languages
 `frontend/languages.js` is the single source of truth. It records, per language, the

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Document OCR &amp; Translate</title>
+    <script src="./config.js"></script>
+    <script>
+      window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <nav class="page-nav">
+        <a href="./index.html">Speak &amp; translate</a>
+        <a href="./ocr.html" aria-current="page">Document OCR</a>
+      </nav>
+
+      <div class="panel">
+        <div class="title-row">
+          <div>
+            <h1>Document OCR</h1>
+            <p class="hint hero-subtitle">
+              Photograph a document, read the text on your device, and translate it into English.
+            </p>
+          </div>
+          <span id="ocrState" class="status warn">idle</span>
+        </div>
+        <p class="hint helper-text" id="ocrModelStatus">OCR model idle</p>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">1. Choose a document</h2>
+        <div class="capture-row">
+          <label class="capture-button">
+            Take a photo
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" />
+          </label>
+          <label class="capture-button">
+            Choose an image
+            <input id="fileInput" type="file" accept="image/*" />
+          </label>
+        </div>
+        <img id="documentPreview" alt="Selected document preview" hidden />
+        <p class="hint helper-text" id="documentInfo">No document selected yet.</p>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">2. Document language</h2>
+        <div class="language-row">
+          <div class="field">
+            <label for="documentLanguage">Text on the page is written in</label>
+            <select id="documentLanguage"></select>
+          </div>
+        </div>
+        <p class="hint helper-text">
+          Recognition itself is language-independent. This choice only picks the translation
+          model used to turn the recognised text into English.
+        </p>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="runOcr" type="button" class="primary" disabled>Read and translate</button>
+          <button id="stopOcr" type="button" class="ghost" disabled>Stop</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="title-row">
+          <h2 class="section-title">Recognised text</h2>
+          <span id="ocrOfflineBadge" class="offline-badge" data-state="unknown">Offline status unknown</span>
+        </div>
+        <div id="ocrOutput" class="ocr-empty">Recognised text will appear here.</div>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="copyOcrText" type="button" class="ghost">Copy recognised text</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">English translation</h2>
+        <div id="ocrTranslationOutput" class="ocr-empty">The English translation will appear here.</div>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="copyOcrTranslation" type="button" class="ghost">Copy translation</button>
+          <button id="clearOcrOutput" type="button" class="ghost">Clear</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="title-row">
+          <h2 class="section-title">Offline model storage</h2>
+          <button id="refreshOcrCache" type="button" class="ghost">Recheck cache</button>
+        </div>
+        <p class="hint helper-text" id="ocrPairStatus">Checking cached models&hellip;</p>
+        <ul class="model-list" id="ocrModelList"></ul>
+        <p class="hint helper-text" id="ocrStorageUsage">Checking browser storage&hellip;</p>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="downloadOcrModel" type="button" class="ghost">Download for offline use</button>
+          <button id="removeOcrModel" type="button" class="ghost">Remove OCR model</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toggle-row">
+          <h2 class="section-title">Activity</h2>
+          <button id="toggleOcrLog" type="button">Hide activity</button>
+        </div>
+        <div id="log"></div>
+      </div>
+    </div>
+    <script>
+      window.__APP_BASE_PATH__ = new URL("./", window.location.href).pathname;
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js", {
+            scope: window.__APP_BASE_PATH__,
+          }).catch((error) => {
+            console.error("service worker registration failed", error);
+          });
+        });
+      }
+    </script>
+    <script type="module" src="./ocr.js"></script>
+  </body>
+</html>

@@ -12,7 +12,7 @@ import {
   findLanguageByLocale,
 } from "./languages.js";
 import {
-  deleteTranslationModelCache,
+  deleteHuggingFaceModelCache,
   describeAsrModel,
   describeTranslationModel,
   formatBytes,
@@ -645,7 +645,7 @@ removeSelectedModelBtn?.addEventListener("click", async () => {
   for (const modelName of models) {
     await releaseLocalTranslation(modelName); removeDownloadedModel(modelName);
     // sw.js can only reach the app shell caches, so the model files are deleted here.
-    const deleted = await deleteTranslationModelCache(modelName);
+    const deleted = await deleteHuggingFaceModelCache(modelName);
     log(`removed ${modelName}: ${deleted} cached file(s) deleted`);
     if (navigator.serviceWorker?.controller) navigator.serviceWorker.controller.postMessage({ type: "REMOVE_MODEL_CACHE", modelName });
   }

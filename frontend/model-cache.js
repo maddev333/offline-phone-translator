@@ -95,6 +95,25 @@ export function describeTranslationModel(report, modelName) {
   };
 }
 
+// A vision-language model is split across several ONNX sessions, so "has some .onnx"
+// is not enough: the caller passes the exact file list it needs to run offline.
+export function describeOcrModel(report, modelName, requiredFiles) {
+  if (!report?.supported || !modelName) {
+    return { state: "unknown", files: 0, bytes: 0, missing: requiredFiles.slice() };
+  }
+  const entries = matchTranslationEntries(report, modelName);
+  const bytes = entries.reduce((total, entry) => total + entry.bytes, 0);
+  const missing = requiredFiles.filter(
+    (file) => !entries.some((entry) => entry.url.endsWith(`/${file}`))
+  );
+  return {
+    state: missing.length === 0 ? "cached" : entries.length ? "partial" : "absent",
+    files: entries.length,
+    bytes,
+    missing,
+  };
+}
+
 export function describeAsrModel(report) {
   if (!report?.supported) {
     return { state: "unknown", files: 0, bytes: 0, missing: ASR_REQUIRED_FILES.slice() };
@@ -114,7 +133,7 @@ export function describeAsrModel(report) {
 
 // sw.js can only prune the app shell caches, so the page deletes the model files it
 // can see. Without this the status would keep reporting a removed model as cached.
-export async function deleteTranslationModelCache(modelName) {
+export async function deleteHuggingFaceModelCache(modelName) {
   if (typeof caches === "undefined" || !modelName) return 0;
   const report = await getModelCacheReport();
   if (!report.supported) return 0;
