@@ -1,5 +1,11 @@
 const CACHE_PREFIX = "offline-phone-translator-static-";
-const STATIC_CACHE = `${CACHE_PREFIX}v10`;
+const STATIC_CACHE = `${CACHE_PREFIX}v11`;
+// Kept outside CACHE_PREFIX so bumping the shell version does not re-download it.
+const CDN_CACHE = "cdn-runtime-v1";
+// Transformers.js still resolves the ONNX Runtime loader module from this host. The
+// matching .wasm is excluded: transformers.js caches that one itself, and mirroring it
+// here would store the same ~24 MB binary twice.
+const CDN_ORIGIN = "https://cdn.jsdelivr.net";
 
 function getBasePath() {
   const url = new URL(self.location.href);
@@ -29,6 +35,11 @@ function getAppAssets() {
     toAppUrl(`${basePath}asr/shared.js`),
     toAppUrl(`${basePath}asr/mic-processor.js`),
     toAppUrl(`${basePath}manifest.webmanifest`),
+    // Runtime libraries are served from this origin (scripts/vendor-libs.mjs) so a
+    // cold start with no network still finds them.
+    toAppUrl(`${basePath}vendor/transformers.min.js`),
+    toAppUrl(`${basePath}vendor/ort.webgpu.min.mjs`),
+    toAppUrl(`${basePath}vendor/ort-wasm-simd-threaded.asyncify.mjs`),
   ];
 }
 
@@ -54,15 +65,36 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// jsdelivr serves CORS headers, so the cached response is a real one rather than an
+// opaque placeholder and can be replayed with no network.
+async function cacheFirstCdn(request) {
+  const cache = await caches.open(CDN_CACHE);
+  const cached = await cache.match(request);
+  if (cached) {
+    return cached;
+  }
+  const response = await fetch(request);
+  if (response.ok) {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") {
     return;
   }
 
-  // Cross-origin traffic (CDN libraries, Hugging Face model files) manages its
-  // own caching. Mirroring it here would store the ASR model a second time.
-  if (new URL(request.url).origin !== self.location.origin) {
+  const url = new URL(request.url);
+
+  if (url.origin !== self.location.origin) {
+    // Model weights (huggingface.co) and the ONNX Runtime .wasm are cached by the code
+    // that downloads them, with progress reporting; mirroring them here would double
+    // the storage. Only the small CDN modules still need a cache entry.
+    if (url.origin === CDN_ORIGIN && !url.pathname.endsWith(".wasm")) {
+      event.respondWith(cacheFirstCdn(request));
+    }
     return;
   }
 

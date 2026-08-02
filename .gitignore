@@ -1,5 +1,10 @@
 node_modules/
 dist/
+# Third-party browser runtime downloaded by `npm run vendor`. Not committed: the
+# minified Transformers.js bundle trips GitHub secret scanning (its export map puts a
+# 32-char identifier next to the word "Mistral", which matches the Mistral API key
+# pattern), and these are reproducible artifacts at pinned versions anyway.
+frontend/vendor/
 .env
 .env.*
 !.env.example

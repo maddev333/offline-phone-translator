@@ -10,6 +10,12 @@ This repository is a browser-based offline translation prototype with:
 - service-worker caching for offline app-shell support, scoped to app-owned caches
 - retryable model loading and explicit in-memory pipeline release
 
+Nothing is loaded from a CDN at run time. Transformers.js and ONNX Runtime live in
+`frontend/vendor/`, which is gitignored and populated by `npm run vendor` (run it after
+cloning; the Pages workflow runs it before deploying). The ONNX Runtime `.wasm` binaries
+and the model weights are downloaded once into Cache Storage, and the download buttons
+request persistent storage so the browser does not evict them.
+
 Current supported language directions:
 - English ↔ Arabic, Chinese, Czech, Danish, Dutch, Finnish, French, German, Hindi, Hungarian, Italian, Russian, Spanish, Swedish, Ukrainian, Vietnamese
 - Japanese, Korean, Polish, Turkish → English only

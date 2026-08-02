@@ -8,10 +8,11 @@ import {
   RawImage,
   TextStreamer,
   env,
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0";
+} from "./vendor/transformers.min.js";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
+env.useWasmCache = true;
 
 const DEFAULT_MODEL = "onnx-community/GLM-OCR-ONNX";
 const DEFAULT_DTYPE = "q4f16";

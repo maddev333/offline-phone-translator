@@ -15,6 +15,7 @@ import {
   deleteHuggingFaceModelCache,
   describeAsrModel,
   describeTranslationModel,
+  ensurePersistentStorage,
   formatBytes,
   getModelCacheReport,
   invalidateModelCacheReport,
@@ -179,11 +180,18 @@ function describeLastCacheCheck() {
 function renderStorageUsage() {
   if (!storageUsageEl) return;
   if (!modelCacheReport?.supported) { storageUsageEl.textContent = "This browser cannot report cached model storage."; return; }
-  const { usage, quota } = modelCacheReport;
-  if (!usage) { storageUsageEl.textContent = `Model status is verified against the browser cache.${describeLastCacheCheck()}`; return; }
+  const { usage, quota, persisted } = modelCacheReport;
+  // Without persistence the browser may drop hundreds of megabytes of weights the
+  // moment it needs room, which only shows up as a failed translation while offline.
+  const persistence = persisted === true
+    ? " Storage is persistent, so cached models are not evicted automatically."
+    : persisted === false
+      ? " Storage is not persistent yet — download a model to let the browser grant it."
+      : "";
+  if (!usage) { storageUsageEl.textContent = `Model status is verified against the browser cache.${describeLastCacheCheck()}${persistence}`; return; }
   storageUsageEl.textContent = quota
-    ? `Site storage: ${formatBytes(usage)} used of about ${formatBytes(quota)} available.${describeLastCacheCheck()}`
-    : `Site storage: ${formatBytes(usage)} used.${describeLastCacheCheck()}`;
+    ? `Site storage: ${formatBytes(usage)} used of about ${formatBytes(quota)} available.${describeLastCacheCheck()}${persistence}`
+    : `Site storage: ${formatBytes(usage)} used.${describeLastCacheCheck()}${persistence}`;
 }
 function setModelDownloadProgress(modelName, ratio, label) {
   const item = Array.from(modelCacheListEl?.children || []).find((row) => row.dataset.model === modelName);
@@ -359,6 +367,10 @@ async function downloadOfflineModels() {
     const models = isConversationMode() ? getConversationModels() : [getCurrentLanguageSelection().modelName].filter(Boolean);
     if (!models.length) { const { sourceLanguage, targetLanguage } = getCurrentLanguageSelection(); throw new Error(`Language pair not supported yet: ${sourceLanguage} → ${targetLanguage}`); }
     setLocalConversationState("warn", "downloading model"); setLocalModelStatus("Downloading selected model..."); setLocalRecordingStatus("Preparing selected offline model..."); log("downloading selected offline translation model");
+    // Asking here keeps the request inside the click gesture, which is when browsers
+    // are most willing to mark the origin persistent.
+    const persisted = await ensurePersistentStorage();
+    if (persisted === false) log("browser declined persistent storage; cached models may be evicted");
     for (const modelName of models) { log("using translation model:", modelName); activeDownloadModel = modelName; await preloadLocalTranslation(modelName); saveDownloadedModel(modelName); }
     await refreshModelCacheView({ refresh: true }); setLocalConversationState("ok", "offline ready"); setLocalModelStatus("Selected model downloaded"); setLocalRecordingStatus("Selected offline model ready"); log("selected offline translation model downloaded");
   } catch (error) { setLocalConversationState("err", "download failed"); setLocalModelStatus("Offline model download failed"); setLocalRecordingStatus("Offline download failed"); log("offline model download failed:", error instanceof Error ? error.message : String(error)); void refreshModelCacheView({ refresh: true }); } finally { activeDownloadModel = null; }

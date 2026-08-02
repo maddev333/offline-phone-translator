@@ -85,6 +85,13 @@ automatically. Picking an explicit language conditions the encoder directly and 
 slightly more accurate.
 
 ## Run locally
+The browser runtime in `frontend/vendor/` is not committed, so fetch it once after
+cloning:
+
+```bash
+npm run vendor
+```
+
 ### Option 1: local server
 ```bash
 npm install
@@ -94,19 +101,43 @@ npm run dev
 Open `http://localhost:3000`.
 
 ### Option 2: static preview
-Serve `frontend/` with any static file server.
+Run `npm run vendor`, then serve `frontend/` with any static file server.
 
 ## Scripts
 - `npm run dev` — run the local server
 - `npm run build` — compile the optional TypeScript server
 - `npm start` — run the compiled server
+- `npm run vendor` — refresh the vendored browser runtime in `frontend/vendor/` (add `--force` to overwrite)
+
+## Working with no internet
+After one online visit the app runs with the network completely off. Three things have
+to be in place, and each is handled separately:
+
+1. **App shell and runtime libraries.** Transformers.js and ONNX Runtime are served
+   from `frontend/vendor/` instead of a CDN, because a module import that misses the
+   cache takes the whole page down. `scripts/vendor-libs.mjs` downloads them at pinned
+   versions. The files are gitignored, so run `npm run vendor` after cloning and
+   `npm run vendor -- --force` after changing a version; the Pages workflow runs it
+   before deploying.
+2. **ONNX Runtime `.wasm` binaries.** Too large to keep in the repo. The ASR worker
+   downloads its copy once into the `onnxruntime-web-<version>` cache, and
+   Transformers.js caches its own into `transformers-cache`.
+3. **Model weights.** Downloaded from Hugging Face by the *Download for offline use*
+   buttons and kept in Cache Storage.
+
+Use those download buttons before going offline. They also ask for persistent storage,
+which exempts the origin from eviction — without it iOS Safari discards Cache Storage
+after about a week of not visiting the site, and Chrome clears it under storage
+pressure. The storage line under *Offline model storage* reports whether the grant
+went through. On an iPad, adding the page to the Home Screen first gives the install a
+larger and more durable storage bucket.
 
 ## Notes
 - Translation runs in the browser, not on the server.
 - The server is optional and only serves static files plus a health endpoint.
 - Downloaded model tracking is stored in browser local storage as readiness metadata; the browser cache is verified when the model is loaded.
 - Failed model loads can be retried, and releasing a model disposes its in-memory pipeline when supported.
-- The service worker caches same-origin app assets only. CDN libraries and Hugging Face model files keep their own caches so large models are never stored twice.
+- The service worker precaches same-origin app assets, including the vendored runtime in `frontend/vendor/`. Hugging Face model files and the ONNX Runtime `.wasm` keep their own caches so large downloads are never stored twice.
 - Service worker cleanup only removes caches prefixed with `offline-phone-translator-static-`, so shipping an app update never wipes the downloaded translation or ASR models.
 - Removing a translation model clears readiness metadata and matching app-owned cache entries. Transformers.js-managed cache files may remain until browser storage is cleared.
 - Removing the ASR model deletes the `nemotron-asr-int4-v1` cache directly from the page, so the space is reclaimed reliably.

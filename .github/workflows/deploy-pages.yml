@@ -27,6 +27,14 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Vendor browser runtime
+        run: npm run vendor
+
       - name: Prepare static site
         run: |
           mkdir -p public

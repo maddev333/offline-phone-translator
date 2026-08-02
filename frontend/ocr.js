@@ -21,6 +21,7 @@ import {
   deleteHuggingFaceModelCache,
   describeOcrModel,
   describeTranslationModel,
+  ensurePersistentStorage,
   formatBytes,
   getModelCacheReport,
   invalidateModelCacheReport,
@@ -213,14 +214,21 @@ function renderStorageUsage() {
     return;
   }
   const checked = lastCacheCheck ? ` Checked ${lastCacheCheck.toLocaleTimeString()}.` : "";
-  const { usage, quota } = modelCacheReport;
+  const { usage, quota, persisted } = modelCacheReport;
+  // The OCR weights are about 630 MB, so eviction is the difference between working
+  // offline next week and a blank page.
+  const persistence = persisted === true
+    ? " Storage is persistent, so cached models are not evicted automatically."
+    : persisted === false
+      ? " Storage is not persistent yet \u2014 download the model to let the browser grant it."
+      : "";
   if (!usage) {
-    storageUsageEl.textContent = `Model status is verified against the browser cache.${checked}`;
+    storageUsageEl.textContent = `Model status is verified against the browser cache.${checked}${persistence}`;
     return;
   }
   storageUsageEl.textContent = quota
-    ? `Site storage: ${formatBytes(usage)} used of about ${formatBytes(quota)} available.${checked}`
-    : `Site storage: ${formatBytes(usage)} used.${checked}`;
+    ? `Site storage: ${formatBytes(usage)} used of about ${formatBytes(quota)} available.${checked}${persistence}`
+    : `Site storage: ${formatBytes(usage)} used.${checked}${persistence}`;
 }
 
 function updateOfflineStatus() {
@@ -413,6 +421,10 @@ async function downloadModels() {
   try {
     setState("warn", "downloading");
     setModelStatus("Downloading the OCR model. Keep this page open.");
+    // Asking here keeps the request inside the click gesture, which is when browsers
+    // are most willing to mark the origin persistent.
+    const persisted = await ensurePersistentStorage();
+    if (persisted === false) log("browser declined persistent storage; cached models may be evicted");
     await runExclusive(() => preloadOcrModel());
     const { language, modelName } = getSelectedTranslationModel();
     if (modelName && isLocalTranslationEnabled()) {

@@ -1,4 +1,6 @@
-import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/ort.webgpu.mjs";
+// Served from our own origin (see scripts/vendor-libs.mjs). A CDN import here would
+// make the worker unusable offline, and sw.js only precaches same-origin assets.
+import * as ort from "../vendor/ort.webgpu.min.mjs";
 import {
   CONFIG,
   buildMelFB,
@@ -10,8 +12,15 @@ import {
 
 const C = CONFIG;
 const ORT_VER = "1.26.0";
+// ort.webgpu always asks for the asyncify build. The glue module is vendored next to
+// the bundle; the binary is too large to keep in the repo, so it is downloaded once
+// and kept in Cache Storage exactly like the model weights.
+const ORT_WASM_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VER}/dist/ort-wasm-simd-threaded.asyncify.wasm`;
+const ORT_CACHE_NAME = `onnxruntime-web-${ORT_VER}`;
 
-ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VER}/dist/`;
+ort.env.wasm.wasmPaths = {
+  mjs: new URL("../vendor/ort-wasm-simd-threaded.asyncify.mjs", import.meta.url).href,
+};
 ort.env.wasm.numThreads = 1;
 ort.env.logLevel = "error";
 
@@ -27,9 +36,9 @@ let ready = false;
 let initInFlight = null;
 let ENC_EP = "webgpu";
 
-async function openCache() {
+async function openCache(name = CACHE_NAME) {
   try {
-    return await caches.open(CACHE_NAME);
+    return await caches.open(name);
   } catch {
     return null;
   }
@@ -48,8 +57,8 @@ function progressStream(body, label, total) {
   );
 }
 
-async function fetchBlobCached(url, label) {
-  const cache = await openCache();
+async function fetchBlobCached(url, label, cacheName) {
+  const cache = await openCache(cacheName);
   if (cache) {
     const hit = await cache.match(url);
     if (hit) {
@@ -112,6 +121,14 @@ async function createSession(modelFile, dataFile, executionProviders, label) {
   }
 }
 
+// ONNX Runtime would otherwise fetch this from a CDN on every cold start, which is the
+// one request that cannot be retried when the device is offline.
+async function loadOrtWasmBinary() {
+  if (ort.env.wasm.wasmBinary) return;
+  const blob = await fetchBlobCached(ORT_WASM_URL, "onnxruntime.wasm", ORT_CACHE_NAME);
+  ort.env.wasm.wasmBinary = await blob.arrayBuffer();
+}
+
 async function init() {
   if (ready) {
     post({ type: "ready", encoderEP: ENC_EP });
@@ -121,6 +138,9 @@ async function init() {
 
   initInFlight = (async () => {
     const hasGPU = !!(self.navigator && navigator.gpu);
+
+    post({ type: "status", detail: "loading onnx runtime" });
+    await loadOrtWasmBinary();
 
     post({ type: "status", detail: "fetching vocab" });
     const vb = await fetchBytes(C.BASE + "vocab.txt", "vocab.txt");

@@ -1,10 +1,15 @@
+// Served from our own origin (see scripts/vendor-libs.mjs) so the page still boots
+// with no network; a CDN import that missed the cache would break the whole app.
 import {
   pipeline,
   env,
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0";
+} from "./vendor/transformers.min.js";
 
 env.allowLocalModels = false;
+// Weights and the ONNX Runtime .wasm binary both land in Cache Storage, which is what
+// makes a second, offline run possible.
 env.useBrowserCache = true;
+env.useWasmCache = true;
 
 env.backends.onnx.wasm.proxy = false;
 env.backends.onnx.wasm.numThreads = 1;

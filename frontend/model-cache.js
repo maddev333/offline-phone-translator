@@ -16,9 +16,23 @@ export const ASR_REQUIRED_FILES = [
   "joint.onnx.data",
 ];
 
-const EMPTY_REPORT = { supported: false, entries: [], usage: null, quota: null };
+const EMPTY_REPORT = { supported: false, entries: [], usage: null, quota: null, persisted: null };
 
 let reportPromise = null;
+
+// Cache Storage is evictable by default: iOS Safari discards it after roughly a week
+// without a visit, and Chrome clears it under storage pressure. A persisted origin is
+// exempt, and the permission is far more likely to be granted from a user gesture, so
+// this is called from the download buttons rather than on page load.
+export async function ensurePersistentStorage() {
+  if (typeof navigator === "undefined" || !navigator.storage?.persist) return null;
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return null;
+  }
+}
 
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
@@ -53,14 +67,16 @@ async function buildReport() {
     const groups = await Promise.all(names.map(readCacheEntries));
     let usage = null;
     let quota = null;
+    let persisted = null;
     try {
       const estimate = await navigator.storage?.estimate?.();
       usage = estimate?.usage ?? null;
       quota = estimate?.quota ?? null;
+      persisted = (await navigator.storage?.persisted?.()) ?? null;
     } catch {
       // Storage estimates are advisory; the per-model report still works without them.
     }
-    return { supported: true, entries: groups.flat(), usage, quota };
+    return { supported: true, entries: groups.flat(), usage, quota, persisted };
   } catch {
     return EMPTY_REPORT;
   }
