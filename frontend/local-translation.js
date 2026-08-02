@@ -94,6 +94,14 @@ export async function releaseLocalTranslation(model) {
   }
 }
 
+// Switching languages leaves one pipeline per direction resident, which matters on
+// phones and tablets where the browser kills the tab well before the weights would
+// have been evicted from Cache Storage.
+export async function releaseAllLocalTranslation() {
+  const models = Array.from(runtimePromises.keys());
+  await Promise.all(models.map((model) => releaseLocalTranslation(model)));
+}
+
 export async function preloadLocalTranslation(model) {
   if (!isLocalTranslationEnabled()) {
     throw new Error("Local translation mode is disabled");

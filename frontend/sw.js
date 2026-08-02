@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "offline-phone-translator-static-";
-const STATIC_CACHE = `${CACHE_PREFIX}v12`;
+const STATIC_CACHE = `${CACHE_PREFIX}v13`;
 // Kept outside CACHE_PREFIX so bumping the shell version does not re-download it.
 const CDN_CACHE = "cdn-runtime-v1";
 // Transformers.js still resolves the ONNX Runtime loader module from this host. The

@@ -2,7 +2,7 @@ import {
   isLocalTranslationEnabled,
   isLocalTranslationLoaded,
   preloadLocalTranslation,
-  releaseLocalTranslation,
+  releaseAllLocalTranslation,
   runLocalTranslationPrompt,
 } from "./local-translation.js";
 import {
@@ -28,6 +28,7 @@ import {
 } from "./model-cache.js";
 
 const DOCUMENT_LANGUAGE_STORAGE_KEY = "offline-translator-document-language";
+const PROGRESS_STORAGE_KEY = "offline-translator-document-progress";
 const OCR_EMPTY_TEXT = "Recognised text will appear here.";
 const TRANSLATION_EMPTY_TEXT = "The English translation will appear here.";
 // opus-mt caps generation at maxNewTokens (96 by default), so long paragraphs are
@@ -100,6 +101,41 @@ function setTranslationText(text) {
   if (!translationOutputEl) return;
   translationOutputEl.textContent = text || TRANSLATION_EMPTY_TEXT;
   translationOutputEl.classList.toggle("ocr-empty", !text);
+}
+
+function getTranslationText() {
+  if (!translationOutputEl || translationOutputEl.classList.contains("ocr-empty")) return "";
+  return translationOutputEl.textContent || "";
+}
+
+// iPadOS kills a tab that grows past its per-page memory limit and reloads the page,
+// which used to wipe out a finished recognition pass. Mirroring the text into
+// sessionStorage means that reload comes back with the work instead of a blank page.
+function saveProgress() {
+  try {
+    const translation = getTranslationText();
+    if (!recognisedText && !translation) {
+      sessionStorage.removeItem(PROGRESS_STORAGE_KEY);
+      return;
+    }
+    sessionStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify({ text: recognisedText, translation }));
+  } catch {
+    // Storage is full or blocked; progress simply will not survive a reload.
+  }
+}
+
+function restoreProgress() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(PROGRESS_STORAGE_KEY) || "null");
+  } catch {
+    return false;
+  }
+  if (!saved?.text) return false;
+  recognisedText = saved.text;
+  setOcrText(recognisedText);
+  setTranslationText(saved.translation || "");
+  return true;
 }
 
 function runExclusive(task) {
@@ -280,8 +316,12 @@ async function refreshModelCacheView({ refresh = false } = {}) {
 
 function updateControls() {
   if (runOcrBtn) {
-    runOcrBtn.disabled = running || !selectedDocument || !isOcrEnabled();
-    runOcrBtn.textContent = running ? "Reading\u2026" : "Read and translate";
+    // Without a photo but with restored text the button becomes "translate only".
+    const canResume = !selectedDocument && Boolean(recognisedText);
+    runOcrBtn.disabled = running || !isOcrEnabled() || (!selectedDocument && !canResume);
+    runOcrBtn.textContent = running
+      ? "Working\u2026"
+      : canResume ? "Translate text" : "Read and translate";
   }
   if (stopOcrBtn) stopOcrBtn.disabled = !running;
   if (downloadModelBtn) downloadModelBtn.disabled = running;
@@ -352,40 +392,56 @@ async function translateRecognisedText(text, modelName) {
     const translated = await runLocalTranslationPrompt({ prompt: chunk.text, model: modelName });
     output += translated ? `${translated} ` : "";
     setTranslationText(output.trimEnd());
+    saveProgress();
+    // Hand the main thread back between chunks so the browser can paint and reclaim
+    // the buffers the previous generate call allocated.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return output.replace(/[ \t]+\n/g, "\n").trim();
 }
 
 async function readAndTranslate() {
-  if (running || !selectedDocument) return;
+  if (running) return;
+  // A crash-reload restores the recognised text but not the photo, so the same button
+  // re-runs only the translation half instead of asking for the document again.
+  const resumeOnly = !selectedDocument && Boolean(recognisedText);
+  if (!selectedDocument && !resumeOnly) return;
   if (!isOcrEnabled()) {
     setState("err", "disabled");
     setModelStatus("Document OCR is disabled in config.");
     return;
   }
   running = true;
-  recognisedText = "";
-  setOcrText("", true);
+  if (!resumeOnly) recognisedText = "";
   setTranslationText("");
+  saveProgress();
   updateControls();
 
   try {
-    setState("warn", "reading document");
-    setModelStatus("Loading the OCR model\u2026");
-    recognisedText = await runExclusive(() =>
-      runDocumentOcr({ image: selectedDocument.image, onToken: (text) => setOcrText(text, true) })
-    );
-    setOcrText(recognisedText);
-    if (!recognisedText) {
-      setState("warn", "no text found");
-      setModelStatus("No text was recognised in that image.");
-      return;
+    if (!resumeOnly) {
+      setOcrText("", true);
+      setState("warn", "reading document");
+      setModelStatus("Loading the OCR model\u2026");
+      // The previous document's translation pipeline is dead weight while the OCR
+      // sessions are being created, and the two together are what blow the budget.
+      await runExclusive(() => releaseAllLocalTranslation());
+      recognisedText = await runExclusive(() =>
+        runDocumentOcr({ image: selectedDocument.image, onToken: (text) => setOcrText(text, true) })
+      );
+      setOcrText(recognisedText);
+      saveProgress();
+      if (!recognisedText) {
+        setState("warn", "no text found");
+        setModelStatus("No text was recognised in that image.");
+        return;
+      }
+      log(`recognised ${recognisedText.length} characters`);
     }
-    log(`recognised ${recognisedText.length} characters`);
 
     const { language, modelName } = getSelectedTranslationModel();
     if (!modelName) {
       setTranslationText(recognisedText);
+      saveProgress();
       setState("ok", "done");
       setModelStatus("Document is already in English, so no translation was needed.");
       return;
@@ -395,10 +451,22 @@ async function readAndTranslate() {
       setModelStatus("Local translation is disabled in config, so only the recognised text is shown.");
       return;
     }
+    // GLM-OCR holds roughly 630 MB of weights. Building the opus-mt pipeline on top of
+    // that is what pushes iPad Safari past its per-tab limit, and the tab is killed and
+    // reloaded mid-translation. Recognition is finished by this point, so the OCR
+    // sessions are disposed first; the next document reloads them from Cache Storage
+    // with no network.
+    if (isOcrLoaded()) {
+      setModelStatus("Freeing the OCR model\u2026");
+      await runExclusive(() => releaseOcrModel());
+      log("released the OCR model before translating");
+      await refreshModelCacheView({ refresh: true });
+    }
     setState("warn", "translating");
     setModelStatus(`Translating ${language} \u2192 English\u2026`);
     const translated = await runExclusive(() => translateRecognisedText(recognisedText, modelName));
     setTranslationText(translated);
+    saveProgress();
     setState("ok", "done");
     setModelStatus(`Recognised and translated ${language} \u2192 English on this device.`);
     log(`translated ${language} \u2192 English`);
@@ -428,6 +496,10 @@ async function downloadModels() {
     await runExclusive(() => preloadOcrModel());
     const { language, modelName } = getSelectedTranslationModel();
     if (modelName && isLocalTranslationEnabled()) {
+      // The OCR weights are in Cache Storage now, which is all this button promises.
+      // Keeping them in memory as well would only make the next load the one that
+      // runs the tab out of room.
+      await runExclusive(() => releaseOcrModel());
       setModelStatus(`Downloading the ${language} \u2192 English translation model\u2026`);
       await runExclusive(() => preloadLocalTranslation(modelName));
     }
@@ -481,7 +553,7 @@ copyOcrTextBtn?.addEventListener("click", async () => {
   }
 });
 copyTranslationBtn?.addEventListener("click", async () => {
-  const text = translationOutputEl?.classList.contains("ocr-empty") ? "" : translationOutputEl?.textContent || "";
+  const text = getTranslationText();
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
@@ -494,6 +566,8 @@ clearOutputBtn?.addEventListener("click", () => {
   recognisedText = "";
   setOcrText("");
   setTranslationText("");
+  saveProgress();
+  updateControls();
 });
 toggleLogBtn?.addEventListener("click", () => {
   const isHidden = logEl.hasAttribute("hidden");
@@ -535,6 +609,7 @@ window.addEventListener("pagehide", () => {
 renderLanguageOptions();
 setOcrText("");
 setTranslationText("");
+const restoredProgress = restoreProgress();
 updateControls();
 if (!isOcrEnabled()) {
   setState("err", "disabled");
@@ -542,6 +617,9 @@ if (!isOcrEnabled()) {
 } else if (!navigator.gpu) {
   setState("err", "WebGPU unavailable");
   setModelStatus("GLM-OCR needs a WebGPU-capable browser. Recognition is unavailable on this device.");
+} else if (restoredProgress) {
+  setState("warn", "restored");
+  setModelStatus("This page reloaded, so the text from your last document was restored. Translate it again or read a new photo.");
 } else {
   setState("warn", "idle");
   setModelStatus("Take or choose a photo, then read it on this device.");
