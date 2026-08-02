@@ -197,6 +197,70 @@
         font-size: 13px;
         font-weight: 600;
       }
+      .offline-badge[data-state="loaded"],
+      .offline-badge[data-state="cached"] { background: #e7f6ea; color: var(--success); }
+      .offline-badge[data-state="partial"] { background: #fff4d6; color: #8a5a00; }
+      .offline-badge[data-state="missing"] { background: #fde7e9; color: #a12622; }
+      .offline-badge[data-state="absent"],
+      .offline-badge[data-state="unknown"] { background: #eef2f7; color: var(--muted); }
+      .model-list {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+      .model-item {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #f8fafc;
+      }
+      .model-dot {
+        flex: none;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #94a3b8;
+      }
+      .model-name { font-weight: 600; font-size: 15px; }
+      .model-meta { color: var(--muted); font-size: 13px; }
+      .model-state {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .model-item[data-state="loaded"] .model-dot,
+      .model-item[data-state="cached"] .model-dot { background: #16a34a; }
+      .model-item[data-state="loaded"] .model-dot { box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18); }
+      .model-item[data-state="partial"] .model-dot { background: #d97706; }
+      .model-item[data-state="missing"] .model-dot { background: #dc2626; }
+      .model-item[data-state="loaded"] .model-state,
+      .model-item[data-state="cached"] .model-state { color: var(--success); }
+      .model-item[data-state="partial"] .model-state { color: #8a5a00; }
+      .model-item[data-state="missing"] .model-state { color: #a12622; }
+      .model-progress {
+        flex-basis: 100%;
+        height: 6px;
+        margin-top: 4px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        overflow: hidden;
+      }
+      .model-progress > span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--primary);
+        transition: width 120ms linear;
+      }
       .toggle-row {
         display: flex;
         justify-content: space-between;
@@ -294,18 +358,15 @@
       </div>
 
       <div class="panel">
-        <div class="status-grid">
-          <div class="status-block hint">
-            <strong>Offline status</strong><br />
-            <span id="offlinePairStatus">No language pair selected yet.</span>
-          </div>
-          <div class="status-block hint">
-            <strong>Downloaded pairs</strong><br />
-            <span id="downloadedPairsList">None yet.</span>
-          </div>
-          <div class="status-block actions-row">
-            <button id="removeSelectedModel" type="button" class="ghost">Remove selected model</button>
-          </div>
+        <div class="title-row">
+          <h2 class="section-title">Offline model storage</h2>
+          <button id="refreshModelCache" type="button" class="ghost">Recheck cache</button>
+        </div>
+        <p class="hint helper-text" id="offlinePairStatus">No language pair selected yet.</p>
+        <ul class="model-list" id="modelCacheList"></ul>
+        <p class="hint helper-text" id="storageUsage">Checking browser storage&hellip;</p>
+        <div class="actions-row" style="margin-top: 12px;">
+          <button id="removeSelectedModel" type="button" class="ghost">Remove selected model</button>
         </div>
       </div>
 
@@ -363,7 +424,7 @@
       <div class="panel">
         <div class="title-row">
           <h2 class="section-title">Translation</h2>
-          <span id="offlineReadyBadge" class="offline-badge">Offline status unknown</span>
+          <span id="offlineReadyBadge" class="offline-badge" data-state="unknown">Offline status unknown</span>
         </div>
         <div id="translationOutput" class="hint">Your translated text will appear here.</div>
         <div class="actions-row" style="margin-top: 12px;">
